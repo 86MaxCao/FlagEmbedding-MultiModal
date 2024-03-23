@@ -1,4 +1,6 @@
-# Training
+# Activation-Beacon
+
+This folder contains the newer code for activation beacon with the support of deepspeed-3 training. This project is under development and subject to change in the future.
 
 ## Environment
 The main dependencies are:
@@ -9,8 +11,6 @@ You can install our environment with:
 ```bash
 conda env create -f environment.yaml --name activation-beacon
 ```
-
-*All of our experiments are performed on one 8xA800 machine with CUDA 12.1.*
 
 
 ## Data
@@ -28,8 +28,11 @@ tar -xzvf activation-beacon.tar.gz
   - e.g. `activation-beacon:lm/pg19.json` becomes `${data_root}/lm/pg19.json`
   - you can modify the default value of [`data_root`](../src/args.py), so that you don't need to type it for each command.
 
+
 ## Command
 ```bash
+cd new
+
 torchrun --nproc_per_node 8 -m main.train \
 --output_dir data/outputs/activation-beacon-llama2-chat-7b \
 --model_name_or_path meta-llama/Llama-2-7b-chat-hf \
@@ -41,31 +44,33 @@ torchrun --nproc_per_node 8 -m main.train \
 --enable_beacon \
 --beacon_window 1024 \
 --beacon_stride 1024 \
---beacon_stride_mix step-random \
 --beacon_attn step-expansion \
---beacon_attend_previous \
+--beacon_sink_size 1 \
 --beacon_ratio 2 4 8 16 32 64 128 \
 --beacon_ratio_mix step-random \
 --beacon_param q k v o \
---group_by_length \
 --gradient_checkpointing \
 --save_strategy steps \
 --max_steps 10000 \
 --save_steps 10000 \
 --logging_steps 50 \
---deepspeed data/deepspeed/stage2.json
+--chat_template llama-2 \
+--group_by_stride strict \
+--deepspeed data/deepspeed/stage3.json \
 
 
 # Evaluation
 for model in data/outputs/activation-beacon-llama2-chat-7b/*
 do
+COMMAND="--beacon_sink_size 1"
+
 # 100K perplexity
-torchrun --nproc_per_node 8 -m main.eval_lm --model_name_or_path $model --max_length 100000 --beacon_ratio 32 --min_length 400000 --enable_beacon --stride 0
+torchrun --nproc_per_node 8 -m main.eval_lm --model_name_or_path $model --max_length 100000 --beacon_ratio 32 --min_length 400000 --enable_beacon --stride 0 $COMMAND
 # 400K perplexity
-torchrun --nproc_per_node 8 -m main.eval_lm --model_name_or_path $model --max_length 400000 --beacon_ratio 128 --min_length 400000 --enable_beacon --stride 0
+torchrun --nproc_per_node 8 -m main.eval_lm --model_name_or_path $model --max_length 400000 --beacon_ratio 128 --min_length 400000 --enable_beacon --stride 0 $COMMAND
 # LongBench
-torchrun --nproc_per_node 8 -m main.eval_longbench --model_name_or_path $model --dataset_names narrativeqa qasper multifieldqa_en hotpotqa 2wikimqa musique gov_report qmsum multi_news trec triviaqa samsum lcc repobench-p --max_length 15500 --enable_beacon
+torchrun --nproc_per_node 8 -m main.eval_longbench --model_name_or_path $model --max_length 15500 --enable_beacon $COMMAND
 # Topic Retrieval
-torchrun --nproc_per_node 8 -m main.eval_longeval --model_name_or_path $model --enable_beacon
+torchrun --nproc_per_node 8 -m main.eval_longeval --model_name_or_path $model --enable_beacon $COMMAND
 done
 ```

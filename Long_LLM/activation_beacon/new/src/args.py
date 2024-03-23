@@ -39,18 +39,18 @@ class ModelArgs:
         default="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",
         metadata={'help': 'Huggingface access token.'}
     )
-    use_flash_attention_2: bool = field(
-        default=False,
-        metadata={'help': 'Use flash attention?'}
+    attn_impl: Optional[str] = field(
+        default="sdpa",
+        metadata={'help': 'The implementation of attention.'}
     )
 
     max_length: int = field(
         default=4096,
         metadata={'help': 'How many tokens at maximum for each input.'},
     )
-    add_chat_inst: bool = field(
-        default=False,
-        metadata={'help': 'Add chat model instruction?'}
+    chat_template: str = field(
+        default="mistral",
+        metadata={'help': 'Instruction template name in fastchat.'}
     )
 
     rope_method: Optional[str] = field(
@@ -96,42 +96,64 @@ class ModelArgs:
         default=1024,
         metadata={'help': 'The initial sliding window size.'}
     )
-    beacon_stride: List[int] = field(
-        default_factory=lambda: [1024],
-        metadata={'help': 'The possible strides of sliding window.'}
-    )
-    beacon_stride_mix: str = field(
-        default="step-random",
-        metadata={'help': 'How to determine the beacon_stride for each input. {step-random, instance-random, mix-random}'}
+    beacon_stride: int = field(
+        default=1024,
+        metadata={'help': 'The stride of the sliding window.'}
     )
     beacon_attn: str = field(
         default="step-expansion",
         metadata={'help': 'How to assign attention masks of beacon tokens? {segmentation, step-expansion, full-converage}'}
-    )
-    beacon_attend_previous: bool = field(
-        default=True,
-        metadata={'help': 'The beacons in the current window can attend to beacons in previous windows?'}
     )
     beacon_ratio: List[int] = field(
         default_factory=lambda: [0,2,4,8,16,32,64,128],
         metadata={'help': 'Condensing ratios for beacons.'}
     )
     beacon_ratio_mix: str = field(
-        default="step-random",
-        metadata={'help': 'How to determine the beacon_ratio for each input. {step-random, instance-random, mix-random, adapt-x}'}
+        default="adapt-1024",
+        metadata={'help': 'How to determine the beacon_ratio for each input. {step-random, instance-random, adapt-x}'}
     )
     beacon_param: List[str] = field(
         default_factory=lambda: ['q', 'k', 'v', 'o'],
         metadata={'help': 'The introduced parameters for beacon.'}
+    )
+    beacon_sink_size: int = field(
+        default=0,
+        metadata={'help': 'The number of activations that are always kept in the head of the sequence according to StreamingLLM.'}
     )
     retrieval_method: Optional[str] = field(
         default=None,
         metadata={'help': 'How to retrieve? {bm25}'}
     )
     retrieval_topk: int = field(
-        default=2,
+        default=1,
         metadata={'help': 'How many windows to retrieve?'}
     )
+    retrieval_key_length: int = field(
+        default=1024,
+        metadata={'help': 'The key sequence length in retrieval.'}
+    )
+
+    # generation_config: Optional[str] = field(
+    #     default=None,
+    #     metadata={'help': 'The path to a json file configuring the generation parameters.'}
+    # )
+    max_new_tokens: Optional[int] = field(
+        default=None,
+        metadata={'help': 'How many tokens at maximum to return?'},
+    )
+    do_sample: Optional[bool] = field(
+        default=None,
+        metadata={'help': 'Do sampling when decoding?'},
+    )
+    temperature: Optional[float] = field(
+        default=None,
+        metadata={'help': 'Sampling temperature.'},
+    )
+    top_p: Optional[float] = field(
+        default=None,
+        metadata={'help': "If set to float < 1, only the smallest set of most probable tokens with probabilities that add up to `top_p` or higher are kept for generation."}
+    )
+
 
     def resolve_path(self, path):
         """Resolve any path starting with 'activation-beacon:' to relative path against data_root."""
@@ -146,36 +168,44 @@ class ModelArgs:
                 path = os.path.join(self.data_root, path.replace(pattern, ""))
 
         return path
+    
+    def get_generation_config(self):
+        generation_config = {}
+        if self.max_new_tokens is not None:
+            generation_config["max_new_tokens"] = self.max_new_tokens
+        if self.do_sample is not None:
+            generation_config["do_sample"] = self.do_sample
+        if self.temperature is not None:
+            generation_config["temperature"] = self.temperature
+        if self.top_p is not None:
+            generation_config["top_p"] = self.top_p
+        return generation_config
 
-    def __post_init__(self):        
+    def __post_init__(self):
         if self.train_data is not None:
             self.train_data = self.resolve_path(self.train_data)
 
         if self.eval_data is not None:
             self.eval_data = self.resolve_path(self.eval_data)
-        
+
 
 @dataclass
 class TrainingArgs(TrainingArguments):
     # ==============================
     # Colossal ai specific arguments
     # ==============================
-    use_colossal: bool = field(
-        default=False,
-        metadata={'help': 'Use colossal trainer?'}
-    )
-    colossal_plugin: str = field(
-        default="gemini",
-        metadata={'help': 'The plugin name for colossalai.'}
-    )
-    mixed_precision: str = field(
-        default="bf16",
-        metadata={'help': 'The mixed precision for colossalai.'}
-    )
-    save_optimizer: bool = field(
-        default=False,
-        metadata={'help': 'Save optimizer and scheduler in checkpoint?'}
-    )
+    # use_colossal: bool = field(
+    #     default=False,
+    #     metadata={'help': 'Use colossal trainer?'}
+    # )
+    # colossal_plugin: str = field(
+    #     default="zero2",
+    #     metadata={'help': 'The plugin name for colossalai.'}
+    # )
+    # colossal_mp: str = field(
+    #     default="bf16",
+    #     metadata={'help': 'The mixed precision for colossalai.'}
+    # )
     
     # ==============================
     # Common arguments
@@ -201,7 +231,7 @@ class TrainingArgs(TrainingArguments):
         metadata={'help': 'Find unusuable parameters?'}
     )
     # NOTE: essential to keep comuputation graph because we need gradients for beacon tokens
-    gradient_checkpointing_kwargs: Optional[Dict] = field(
+    gradient_checkpointing_kwargs: Dict = field(
         default_factory=lambda: {"use_reentrant": False}
     )
     report_to: str = field(
@@ -212,6 +242,11 @@ class TrainingArgs(TrainingArguments):
     # ==============================
     # Customized arguments
     # ==============================
+    pretrain_config: Optional[str] = field(
+        default=None,
+        metadata={'help': 'Configuration json path for standard pretraining (concatenating multiple documents to form instances of equal lengths).'}
+    )
+    
     min_length: int = field(
         default=0,
         metadata={'help': 'How many tokens at minimum for training?'}
@@ -219,6 +254,19 @@ class TrainingArgs(TrainingArguments):
     max_train_num_per_data: Optional[int] = field(
         default=None,
         metadata={'help': 'How many samples at most for each train_data?'}
+    )
+
+    group_by_stride: Optional[str] = field(
+        default=None,
+        metadata={'help': 'Group the training data instances by the number of strides in the beacon model. {relaxed, strict}'}
+    )
+    sort_by_stride: Optional[str] = field(
+        default=None,
+        metadata={'help': 'Sort the training data instances by the number of strides in the beacon model. {ascend, descend}'}
+    )
+    retrieval_tuning: float = field(
+        default=0.,
+        metadata={'help': 'The portion of the training data that will be used for retrieval-oriented tuning.'}
     )
     
     eval_method: str = field(
@@ -232,6 +280,14 @@ class TrainingArgs(TrainingArguments):
     eval_min_length: int = field(
         default=512,
         metadata={'help': 'How many tokens at minimum for each input in evaluation.'},
+    )
+    eval_beacon_ratio: List[int] = field(
+        default_factory=lambda: [32],
+        metadata={'help': 'Condensing ratios for beacons in evaluation.'}
+    )
+    eval_beacon_ratio_mix: str = field(
+        default="adapt-1024",
+        metadata={'help': 'How to determine the beacon_ratio for each input. {step-random, instance-random, adapt-x}'}
     )
     max_eval_num: Optional[int] = field(
         default=None,
@@ -264,8 +320,8 @@ class TrainingArgs(TrainingArguments):
     )
 
     metrics: List[str] = field(
-        default_factory=lambda: ["rouge"],
-        metadata={'help': 'List of metrics. {rouge, acc}'}
+        default_factory=lambda: [],
+        metadata={'help': 'List of metrics. {rouge, save_result}'}
     )
     log_path: str = field(
         default="data/outputs/metrics.log",

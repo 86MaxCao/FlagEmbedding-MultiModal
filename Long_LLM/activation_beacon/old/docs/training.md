@@ -44,7 +44,7 @@ torchrun --nproc_per_node 8 -m main.train \
 --beacon_stride_mix step-random \
 --beacon_attn step-expansion \
 --beacon_attend_previous \
---beacon_ratio 2 4 8 16 32 64 128 \
+--beacon_ratio 2 2 2 2 2 4 4 4 4 4 8 8 16 16 32 32 64 128 \
 --beacon_ratio_mix step-random \
 --beacon_param q k v o \
 --group_by_length \

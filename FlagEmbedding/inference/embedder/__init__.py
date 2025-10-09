@@ -7,5 +7,6 @@ __all__ = [
     "BGEM3FlagModel",
     "FlagICLModel",
     "FlagLLMModel",
+    "FlagMLLMModel",
     "EmbedderModelClass",
 ]

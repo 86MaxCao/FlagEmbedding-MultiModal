@@ -4,7 +4,13 @@ from dataclasses import dataclass
 from collections import OrderedDict
 
 from FlagEmbedding.abc.inference import AbsEmbedder
-from FlagEmbedding.inference.embedder import FlagModel, BGEM3FlagModel, FlagLLMModel, FlagICLModel
+from FlagEmbedding.inference.embedder import (
+    FlagModel,
+    BGEM3FlagModel,
+    FlagLLMModel,
+    FlagICLModel,
+    FlagMLLMModel
+)
 
 
 class EmbedderModelClass(Enum):
@@ -12,13 +18,15 @@ class EmbedderModelClass(Enum):
     ENCODER_ONLY_M3 = "encoder-only-m3"
     DECODER_ONLY_BASE = "decoder-only-base"
     DECODER_ONLY_ICL = "decoder-only-icl"
+    MULTIMODAL_MLLM = "multimodal-mllm"
 
 
 EMBEDDER_CLASS_MAPPING = OrderedDict([
     (EmbedderModelClass.ENCODER_ONLY_BASE, FlagModel),
     (EmbedderModelClass.ENCODER_ONLY_M3, BGEM3FlagModel),
     (EmbedderModelClass.DECODER_ONLY_BASE, FlagLLMModel),
-    (EmbedderModelClass.DECODER_ONLY_ICL, FlagICLModel)
+    (EmbedderModelClass.DECODER_ONLY_ICL, FlagICLModel),
+    (EmbedderModelClass.MULTIMODAL_MLLM, FlagMLLMModel)
 ])
 
 
@@ -105,6 +113,14 @@ BGE_MAPPING = OrderedDict([
     (
         "bge-small-zh",
         EmbedderConfig(FlagModel, PoolingMethod.CLS)
+    ),
+    (
+        "BGE-VL-MLLM-S1",
+        EmbedderConfig(FlagMLLMModel, PoolingMethod.LAST_TOKEN, trust_remote_code=True)
+    ),
+    (
+        "BGE-VL-MLLM-S2",
+        EmbedderConfig(FlagMLLMModel, PoolingMethod.LAST_TOKEN, trust_remote_code=True)
     ),
 ])
 
@@ -265,8 +281,9 @@ AUTO_EMBEDDER_MAPPING.update(BCE_MAPPING)
 
 # TODO: Add more models, such as Jina, Stella_v5, NV-Embed, etc.
 
-def support_native_bge_model_list()->List[str]:
+def support_native_bge_model_list() -> List[str]:
     return list(BGE_MAPPING.keys())
 
-def support_model_list()->List[str]:
+
+def support_model_list() -> List[str]:
     return list(AUTO_EMBEDDER_MAPPING.keys())

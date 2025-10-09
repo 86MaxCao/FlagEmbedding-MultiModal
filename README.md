@@ -1,3 +1,18 @@
+# FlagEmbedding-MultiModal  
+> Multimodal Extension of FlagEmbedding (non-official)
+
+![License](https://img.shields.io/badge/License-Apache%202.0-blue.svg)
+![Python](https://img.shields.io/badge/python-≥3.8-green.svg)
+
+## Disclaimer / 声明
+This repository is a **personal fork** maintained by  
+[@86MaxCao](https://github.com/86MaxCao) and is **not affiliated with**  
+[FlagOpen](https://github.com/FlagOpen).  
+All original code is under the Apache 2.0 License; see [LICENSE](LICENSE) for details.
+
+
+
+
 [<img src="./imgs/FlagOpen.png">](https://flagopen.baai.ac.cn/)
 
 <h1 align="center">⚡️BGE: One-Stop Retrieval Toolkit For Search and RAG</h1>
@@ -258,3 +273,7 @@ If you find this repository useful, please consider giving a star :star: and cit
 ## License
 FlagEmbedding is licensed under the [MIT License](https://github.com/FlagOpen/FlagEmbedding/blob/master/LICENSE). 
 
+## Original Copyright
+Copyright 2023 FlagOpen.  
+Source repository: [FlagOpen/FlagEmbedding](https://github.com/FlagOpen/FlagEmbedding)  
+Licensed under the Apache License, Version 2.0.

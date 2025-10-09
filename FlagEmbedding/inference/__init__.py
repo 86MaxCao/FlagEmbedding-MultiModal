@@ -8,6 +8,7 @@ from .embedder import (
 from .reranker import (
     FlagReranker,
     FlagLLMReranker, LayerWiseFlagLLMReranker, LightWeightFlagLLMReranker,
+    MultimodalReranker,
     RerankerModelClass
 )
 
@@ -26,4 +27,5 @@ __all__ = [
     "FlagLLMReranker",
     "LayerWiseFlagLLMReranker",
     "LightWeightFlagLLMReranker",
+    "MultimodalReranker",
 ]

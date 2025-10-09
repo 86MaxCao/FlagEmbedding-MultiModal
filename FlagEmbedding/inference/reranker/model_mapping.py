@@ -5,6 +5,7 @@ from collections import OrderedDict
 
 from FlagEmbedding.abc.inference import AbsReranker
 from FlagEmbedding.inference.reranker import FlagReranker, FlagLLMReranker, LayerWiseFlagLLMReranker, LightWeightFlagLLMReranker
+from FlagEmbedding.inference.reranker.multimodal import MultimodalReranker
 
 
 class RerankerModelClass(Enum):
@@ -12,13 +13,15 @@ class RerankerModelClass(Enum):
     DECODER_ONLY_BASE = "decoder-only-base"
     DECODER_ONLY_LAYERWISE = "decoder-only-layerwise"
     DECODER_ONLY_LIGHTWEIGHT = "decoder-only-lightweight"
+    MULTIMODAL_BASE = "multimodal-base"
 
 
 RERANKER_CLASS_MAPPING = OrderedDict([
     (RerankerModelClass.ENCODER_ONLY_BASE, FlagReranker),
     (RerankerModelClass.DECODER_ONLY_BASE, FlagLLMReranker),
     (RerankerModelClass.DECODER_ONLY_LAYERWISE, LayerWiseFlagLLMReranker),
-    (RerankerModelClass.DECODER_ONLY_LIGHTWEIGHT, LightWeightFlagLLMReranker)
+    (RerankerModelClass.DECODER_ONLY_LIGHTWEIGHT, LightWeightFlagLLMReranker),
+    (RerankerModelClass.MULTIMODAL_BASE, MultimodalReranker)
 ])
 
 
@@ -70,6 +73,10 @@ AUTO_RERANKER_MAPPING = OrderedDict([
     (
         "jinaai/jina-reranker-v1-turbo-en",
         RerankerConfig(FlagReranker)
+    ),
+    (
+        "jinaai/jina-reranker-m0",
+        RerankerConfig(MultimodalReranker, trust_remote_code=True)
     ),
     # TODO: Add more models.
 ])

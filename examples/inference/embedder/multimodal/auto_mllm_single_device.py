@@ -10,7 +10,6 @@ def test_multimodal_single_device():
     # Load the multimodal model
     model = FlagAutoModel.from_finetuned(
         'BAAI/BGE-VL-MLLM-S1',
-        devices="cuda:0",  # if you don't have a GPU, you can use "cpu"
     )
     
     # Example: Composed image retrieval task
@@ -44,7 +43,6 @@ def test_multimodal_text_only():
     """
     model = FlagAutoModel.from_finetuned(
         'BAAI/BGE-VL-MLLM-S1',
-        devices="cuda:0",
     )
     
     # Query with text only
@@ -76,7 +74,6 @@ def test_multimodal_image_only():
     """
     model = FlagAutoModel.from_finetuned(
         'BAAI/BGE-VL-MLLM-S1',
-        devices="cuda:0",
     )
 
     # Query with image only

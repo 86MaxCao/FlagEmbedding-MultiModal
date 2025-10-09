@@ -12,9 +12,7 @@ def test_multimodal_base():
         model_name_or_path='BAAI/BGE-VL-MLLM-S1',
         normalize_embeddings=True,
         use_fp16=True,
-        devices="cuda:0",  # if you don't have a GPU, you can use "cpu"
         trust_remote_code=True,
-        cache_dir=os.getenv('HF_HUB_CACHE', None),
     )
     
     # Example: Composed image retrieval task

@@ -1,6 +1,3 @@
-
-
-
 import torch
 from transformers import AutoModel
 from PIL import Image

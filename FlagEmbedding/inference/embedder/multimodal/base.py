@@ -107,35 +107,63 @@ class MultimodalMLLMEmbedder(AbsEmbedder):
 
     def encode_queries(
         self,
-        queries: Union[List[str], str],
+        queries: Union[List[str], str] = None,
+        images: Union[List[str], str] = None,
         batch_size: Optional[int] = None,
         max_length: Optional[int] = None,
         convert_to_numpy: Optional[bool] = None,
+        task_instruction: Optional[str] = None,
         **kwargs: Any
     ) -> Union[np.ndarray, torch.Tensor]:
         """Encode the queries.
 
         Args:
-            queries (Union[List[str], str]): Input queries to encode.
+            queries (Union[List[str], str], optional): Input queries to encode. Defaults to None.
+            images (Union[List[str], str], optional): Input image paths. Defaults to None.
             batch_size (Optional[int], optional): Number of sentences for each iter. Defaults to :data:`None`.
             max_length (Optional[int], optional): Maximum length of tokens. Defaults to :data:`None`.
             convert_to_numpy (Optional[bool], optional): If True, the output embedding will be a Numpy array. Otherwise, it will 
                 be a Torch Tensor. Defaults to :data:`None`.
+            task_instruction (Optional[str], optional): Task instruction for query. Defaults to None.
 
         Returns:
             Union[torch.Tensor, np.ndarray]: Return the embedding vectors in a numpy array or tensor.
         """
-        return super().encode_queries(
-            queries,
-            batch_size=batch_size,
-            max_length=max_length,
-            convert_to_numpy=convert_to_numpy,
-            **kwargs
-        )
+        if batch_size is None:
+            batch_size = self.batch_size
+        if max_length is None:
+            max_length = self.query_max_length
+        if convert_to_numpy is None:
+            convert_to_numpy = self.convert_to_numpy
+
+        # For multimodal models
+        if hasattr(self.model, 'data_process'):
+            if task_instruction is None:
+                task_instruction = self.query_instruction_for_retrieval
+            return self.encode(
+                sentences=queries,
+                images=images,
+                batch_size=batch_size,
+                max_length=max_length,
+                convert_to_numpy=convert_to_numpy,
+                q_or_c="q",
+                task_instruction=task_instruction,
+                **kwargs
+            )
+        else:
+            # For text-only models
+            return super().encode_queries(
+                queries,
+                batch_size=batch_size,
+                max_length=max_length,
+                convert_to_numpy=convert_to_numpy,
+                **kwargs
+            )
 
     def encode_corpus(
         self,
-        corpus: Union[List[str], str],
+        corpus: Union[List[str], str] = None,
+        images: Union[List[str], str] = None,
         batch_size: Optional[int] = None,
         max_length: Optional[int] = None,
         convert_to_numpy: Optional[bool] = None,
@@ -144,7 +172,8 @@ class MultimodalMLLMEmbedder(AbsEmbedder):
         """Encode the corpus.
 
         Args:
-            corpus (Union[List[str], str]): Input corpus to encode.
+            corpus (Union[List[str], str], optional): Input corpus to encode. Defaults to None.
+            images (Union[List[str], str], optional): Input image paths. Defaults to None.
             batch_size (Optional[int], optional): Number of sentences for each iter. Defaults to :data:`None`.
             max_length (Optional[int], optional): Maximum length of tokens. Defaults to :data:`None`.
             convert_to_numpy (Optional[bool], optional): If True, the output embedding will be a Numpy array. Otherwise, it will 
@@ -153,41 +182,92 @@ class MultimodalMLLMEmbedder(AbsEmbedder):
         Returns:
             Union[torch.Tensor, np.ndarray]: Return the embedding vectors in a numpy array or tensor.
         """
-        return super().encode_corpus(
-            corpus,
-            batch_size=batch_size,
-            max_length=max_length,
-            convert_to_numpy=convert_to_numpy,
-            **kwargs
-        )
+        if batch_size is None:
+            batch_size = self.batch_size
+        if max_length is None:
+            max_length = self.passage_max_length
+        if convert_to_numpy is None:
+            convert_to_numpy = self.convert_to_numpy
+
+        # For multimodal models
+        if hasattr(self.model, 'data_process'):
+            return self.encode(
+                sentences=corpus,
+                images=images,
+                batch_size=batch_size,
+                max_length=max_length,
+                convert_to_numpy=convert_to_numpy,
+                q_or_c="c",
+                task_instruction=None,
+                **kwargs
+            )
+        else:
+            # For text-only models
+            return super().encode_corpus(
+                corpus,
+                batch_size=batch_size,
+                max_length=max_length,
+                convert_to_numpy=convert_to_numpy,
+                **kwargs
+            )
 
     def encode(
         self,
-        sentences: Union[List[str], str],
+        sentences: Union[List[str], str] = None,
+        images: Union[List[str], str] = None,
         batch_size: Optional[int] = None,
         max_length: Optional[int] = None,
         convert_to_numpy: Optional[bool] = None,
+        q_or_c: str = "c",
+        task_instruction: Optional[str] = None,
         **kwargs: Any
     ) -> Union[np.ndarray, torch.Tensor]:
-        """Encode the input sentences with the embedding model.
+        """Encode the input sentences and/or images with the embedding model.
 
         Args:
-            sentences (Union[List[str], str]): Input sentences to encode.
+            sentences (Union[List[str], str], optional): Input sentences to encode. Defaults to None.
+            images (Union[List[str], str], optional): Input image paths to encode. Defaults to None.
             batch_size (Optional[int], optional): Number of sentences for each iter. Defaults to :data:`None`.
             max_length (Optional[int], optional): Maximum length of tokens. Defaults to :data:`None`.
             convert_to_numpy (Optional[bool], optional): If True, the output embedding will be a Numpy array. Otherwise, it will 
                 be a Torch Tensor. Defaults to :data:`None`.
+            q_or_c (str, optional): Query or candidate indicator. Defaults to "c".
+            task_instruction (Optional[str], optional): Task instruction for query. Defaults to None.
 
         Returns:
             Union[torch.Tensor, np.ndarray]: return the embedding vectors in a numpy array or tensor.
         """
-        return super().encode(
-            sentences,
-            batch_size=batch_size,
-            max_length=max_length,
-            convert_to_numpy=convert_to_numpy,
-            **kwargs
-        )
+        if batch_size is None:
+            batch_size = self.batch_size
+        if max_length is None:
+            max_length = self.passage_max_length
+        if convert_to_numpy is None:
+            convert_to_numpy = self.convert_to_numpy
+
+        # For multimodal models, bypass the parent's instruction handling
+        if hasattr(self.model, 'data_process'):
+            return self.encode_single_device(
+                sentences=sentences,
+                images=images,
+                batch_size=batch_size,
+                max_length=max_length,
+                convert_to_numpy=convert_to_numpy,
+                device=self.target_devices[0],
+                q_or_c=q_or_c,
+                task_instruction=task_instruction,
+                **kwargs
+            )
+        else:
+            # For text-only models, use parent's implementation
+            if sentences is None:
+                raise ValueError("sentences must be provided for text-only models")
+            return super().encode(
+                sentences,
+                batch_size=batch_size,
+                max_length=max_length,
+                convert_to_numpy=convert_to_numpy,
+                **kwargs
+            )
 
     @torch.no_grad()
     def encode_single_device(

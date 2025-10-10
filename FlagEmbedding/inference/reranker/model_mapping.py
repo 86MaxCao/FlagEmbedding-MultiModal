@@ -59,23 +59,23 @@ AUTO_RERANKER_MAPPING = OrderedDict([
     ),
     # others
     (
-        "jinaai/jina-reranker-v2-base-multilingual",
+        "jina-reranker-v2-base-multilingual",
         RerankerConfig(FlagReranker)
     ),
     (
-        "Alibaba-NLP/gte-multilingual-reranker-base",
+        "gte-multilingual-reranker-base",
         RerankerConfig(FlagReranker)
     ),
     (
-        "maidalun1020/bce-reranker-base_v1",
+        "bce-reranker-base_v1",
         RerankerConfig(FlagReranker)
     ),
     (
-        "jinaai/jina-reranker-v1-turbo-en",
+        "jina-reranker-v1-turbo-en",
         RerankerConfig(FlagReranker)
     ),
     (
-        "jinaai/jina-reranker-m0",
+        "jina-reranker-m0",
         RerankerConfig(MultimodalReranker, trust_remote_code=True)
     ),
     # TODO: Add more models.

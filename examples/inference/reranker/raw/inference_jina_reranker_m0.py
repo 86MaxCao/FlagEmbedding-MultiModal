@@ -14,10 +14,10 @@ model.eval()
 # Example query and documents
 query = "slm markdown"
 documents = [
-    "https://raw.githubusercontent.com/jina-ai/multimodal-reranker-test/main/handelsblatt-preview.png",
-    "https://raw.githubusercontent.com/jina-ai/multimodal-reranker-test/main/paper-11.png",
-    "https://raw.githubusercontent.com/jina-ai/multimodal-reranker-test/main/wired-preview.png",
-    "https://jina.ai/blog-banner/using-deepseek-r1-reasoning-model-in-deepsearch.webp"
+    "assets/handelsblatt-preview.png",
+    "assets/paper-11.png",
+    "assets/wired-preview.png",
+    "assets/using-deepseek-r1-reasoning-model-in-deepsearch.webp"
 ]
 
 # construct sentence pairs

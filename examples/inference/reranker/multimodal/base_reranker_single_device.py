@@ -28,8 +28,8 @@ def test_multimodal_reranker():
     
     query = "research paper about AI"
     image_docs = [
-        "https://raw.githubusercontent.com/jina-ai/multimodal-reranker-test/main/paper-11.png",
-        "https://raw.githubusercontent.com/jina-ai/multimodal-reranker-test/main/wired-preview.png",
+        "assets/paper-11.png",
+        "assets/wired-preview.png",
     ]
     
     pairs = [[query, doc] for doc in image_docs]
@@ -47,7 +47,7 @@ def test_multimodal_reranker():
     print("\n2. Image Query -> Text Documents")
     print("-" * 70)
     
-    image_query = "https://raw.githubusercontent.com/jina-ai/multimodal-reranker-test/main/paper-11.png"
+    image_query = "assets/paper-11.png"
     text_docs = [
         "This paper discusses deep learning and neural networks.",
         "A guide to cooking Italian pasta.",

@@ -20,12 +20,11 @@ def test_text_to_image_reranking():
     # Text query
     query = "slm markdown"
     
-    # Image document URLs (can be local paths too)
     documents = [
-        "https://raw.githubusercontent.com/jina-ai/multimodal-reranker-test/main/handelsblatt-preview.png",
-        "https://raw.githubusercontent.com/jina-ai/multimodal-reranker-test/main/paper-11.png",
-        "https://raw.githubusercontent.com/jina-ai/multimodal-reranker-test/main/wired-preview.png",
-        "https://jina.ai/blog-banner/using-deepseek-r1-reasoning-model-in-deepsearch.webp"
+        "assets/handelsblatt-preview.png",
+        "assets/paper-11.png",
+        "assets/wired-preview.png",
+        "assets/using-deepseek-r1-reasoning-model-in-deepsearch.webp"
     ]
     
     # Construct sentence pairs
@@ -96,7 +95,7 @@ def test_image_to_text_reranking():
     )
     
     # Image query
-    query_image = "https://raw.githubusercontent.com/jina-ai/multimodal-reranker-test/main/paper-11.png"
+    query_image = "assets/paper-11.png"
     
     # Text documents
     documents = [

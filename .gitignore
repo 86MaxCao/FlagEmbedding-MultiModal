@@ -145,4 +145,8 @@ pic2.py
 en_results
 zh_results
 
-.ipynb_checkpoints
+.ipynb_checkpoints/
+
+# data
+data/
+

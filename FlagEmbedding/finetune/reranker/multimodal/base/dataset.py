@@ -131,15 +131,23 @@ class MultimodalRerankerTrainDataset(Dataset):
         data = self.dataset[item]
         train_group_size = self.args.train_group_size
 
-        # Query
-        query_text = data.get('query', data.get('qry', None))
-        query_image = data.get('query_image', data.get('qry_image_path', None))
-
-        # Positive and negative passages
-        pos_texts = data.get('pos', data.get('pos_text', []))
-        pos_images = data.get('pos_images', data.get('pos_image_path', []))
-        neg_texts = data.get('neg', data.get('neg_text', []))
-        neg_images = data.get('neg_images', data.get('neg_image_path', []))
+        # 检测并转换MegaPairs格式
+        if 'q_texts' in data and 'q_img' in data:
+            # MegaPairs格式: {"q_img": "...", "q_texts": [...], "t_img": "...", "hns": [...]}
+            query_text = random.choice(data['q_texts'])  # 随机选择一个query text
+            query_image = data['q_img']
+            pos_images = [data['t_img']] if 't_img' in data else []
+            pos_texts = [None] * len(pos_images)  # MegaPairs是纯图像检索
+            neg_images = data.get('hns', [])
+            neg_texts = [None] * len(neg_images)
+        else:
+            # 原有格式
+            query_text = data.get('query', data.get('qry', None))
+            query_image = data.get('query_image', data.get('qry_image_path', None))
+            pos_texts = data.get('pos', data.get('pos_text', []))
+            pos_images = data.get('pos_images', data.get('pos_image_path', []))
+            neg_texts = data.get('neg', data.get('neg_text', []))
+            neg_images = data.get('neg_images', data.get('neg_image_path', []))
 
         # Ensure lists
         if not isinstance(pos_texts, list):

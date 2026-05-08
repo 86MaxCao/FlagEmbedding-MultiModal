@@ -61,8 +61,8 @@ class MultimodalRerankerModel(AbsRerankerModel):
         return scores
 
     def forward(
-        self, 
-        pair: Union[Dict[str, Tensor], List[Dict[str, Tensor]]] = None, 
+        self,
+        pair: Union[Dict[str, Tensor], List[Dict[str, Tensor]]] = None,
         teacher_scores: Optional[Tensor] = None
     ):
         """Forward pass with loss computation.
@@ -97,7 +97,7 @@ class MultimodalRerankerModel(AbsRerankerModel):
         )
 
     def compute_listwise_loss(
-        self, 
+        self,
         scores: Tensor, 
         teacher_scores: Optional[Tensor] = None,
         teacher_targets: Optional[Tensor] = None

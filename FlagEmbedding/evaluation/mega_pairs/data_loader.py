@@ -31,8 +31,8 @@ class MegaPairsEvalDataLoader(AbsEvalDataLoader):
         cache_dir: Optional[str] = None,
         token: Optional[str] = None,
         force_redownload: bool = False,
-        dataset_name: str = "JUNJIE99/MegaPairs",
-        image_root_dir: Optional[str] = None,
+        use_local_data: bool = True,
+        max_samples: Optional[int] = None,
     ):
         super().__init__(
             eval_name=eval_name,
@@ -41,8 +41,8 @@ class MegaPairsEvalDataLoader(AbsEvalDataLoader):
             token=token,
             force_redownload=force_redownload
         )
-        self.dataset_name = dataset_name
-        self.image_root_dir = image_root_dir
+        self.use_local_data = use_local_data
+        self.max_samples = max_samples
     
     def available_dataset_names(self) -> List[str]:
         """Get available dataset names."""
@@ -57,50 +57,50 @@ class MegaPairsEvalDataLoader(AbsEvalDataLoader):
         dataset_name: Optional[str] = None,
         save_dir: Optional[str] = None
     ) -> datasets.DatasetDict:
-        """Load corpus from HuggingFace MegaPairs dataset.
+        """Load corpus from local parquet MegaPairs dataset.
         
-        Corpus包含所有候选图像（t_img + hns中的所有图像）
+        Corpus包含所有候选图像（target_image + hard_negative_images中的所有图像）
         """
-        logger.info(f"Loading MegaPairs dataset from {self.dataset_name}")
+        if not self.use_local_data:
+            raise NotImplementedError("Remote loading not supported, use local parquet data")
         
-        # Load dataset from HuggingFace
+        logger.info(f"Loading MegaPairs dataset from local parquet: {self.dataset_dir}")
+        
+        # Load dataset from local parquet files
         mega_pairs = datasets.load_dataset(
-            self.dataset_name,
-            cache_dir=self.cache_dir,
-            token=self.token,
-            download_mode=self.hf_download_mode
+            'parquet',
+            data_dir=self.dataset_dir,
+            streaming=True
         )
         
         # Collect all unique images as corpus
         corpus_dict = {}
         
-        for split in mega_pairs.keys():
-            for data in tqdm(mega_pairs[split], desc=f"Loading corpus from {split}"):
-                # Add target image
-                t_img = data['t_img']
-                if self.image_root_dir:
-                    t_img_path = os.path.join(self.image_root_dir, t_img)
-                else:
-                    t_img_path = t_img
+        for idx, data in enumerate(tqdm(mega_pairs['train'], desc="Loading corpus")):
+            # 限制样本数量
+            if self.max_samples is not None and idx >= self.max_samples:
+                break
                 
-                if t_img not in corpus_dict:
-                    corpus_dict[t_img] = {
-                        'image': t_img_path,
-                        'text': ''  # 纯图像检索，文本为空
+            # Add target image
+            target_image_id = data['target_image_id']
+            target_image_bytes = data['target_image']
+            
+            if target_image_id not in corpus_dict:
+                corpus_dict[target_image_id] = {
+                    'image': target_image_bytes,  # 直接存储 bytes
+                    'text': ''  # 纯图像检索，文本为空
+                }
+            
+            # Add hard negatives
+            hard_negative_ids = data.get('hard_negative_images_id', [])
+            hard_negative_images = data.get('hard_negative_images', [])
+            
+            for hn_id, hn_bytes in zip(hard_negative_ids, hard_negative_images):
+                if hn_id not in corpus_dict:
+                    corpus_dict[hn_id] = {
+                        'image': hn_bytes,  # 直接存储 bytes
+                        'text': ''
                     }
-                
-                # Add hard negatives
-                for hn in data.get('hns', []):
-                    if self.image_root_dir:
-                        hn_path = os.path.join(self.image_root_dir, hn)
-                    else:
-                        hn_path = hn
-                    
-                    if hn not in corpus_dict:
-                        corpus_dict[hn] = {
-                            'image': hn_path,
-                            'text': ''
-                        }
         
         # Save to file if save_dir provided
         if save_dir is not None:
@@ -108,9 +108,12 @@ class MegaPairsEvalDataLoader(AbsEvalDataLoader):
             corpus_path = os.path.join(save_dir, 'corpus.jsonl')
             with open(corpus_path, 'w', encoding='utf-8') as f:
                 for doc_id, doc_data in tqdm(corpus_dict.items(), desc="Saving corpus"):
+                    # 注意：这里不能直接保存 bytes 到 JSON，需要 base64 编码
+                    import base64
+                    image_b64 = base64.b64encode(doc_data['image']).decode('utf-8')
                     f.write(json.dumps({
                         'id': doc_id,
-                        'image': doc_data['image'],
+                        'image': image_b64,  # base64 编码的 bytes
                         'text': doc_data.get('text', '')
                     }, ensure_ascii=False) + '\n')
             logger.info(f"Corpus saved to {corpus_path}")
@@ -123,31 +126,34 @@ class MegaPairsEvalDataLoader(AbsEvalDataLoader):
         split: str = 'test',
         save_dir: Optional[str] = None
     ) -> datasets.DatasetDict:
-        """Load relevance labels from HuggingFace MegaPairs dataset."""
+        """Load relevance labels from local parquet MegaPairs dataset."""
+        if not self.use_local_data:
+            raise NotImplementedError("Remote loading not supported, use local parquet data")
+        
         logger.info(f"Loading qrels for split: {split}")
         
-        # Load dataset
+        # Load dataset from local parquet files
         mega_pairs = datasets.load_dataset(
-            self.dataset_name,
-            cache_dir=self.cache_dir,
-            token=self.token,
-            download_mode=self.hf_download_mode
+            'parquet',
+            data_dir=self.dataset_dir,
+            streaming=True
         )
-        
-        if split not in mega_pairs:
-            raise ValueError(f"Split {split} not found in dataset. Available: {list(mega_pairs.keys())}")
         
         qrels_dict = {}
         
         # 为每个q_text创建qrel
-        for idx, data in enumerate(tqdm(mega_pairs[split], desc=f"Loading qrels from {split}")):
-            t_img = data['t_img']
-            q_texts = data.get('q_texts', [])
+        for idx, data in enumerate(tqdm(mega_pairs['train'], desc="Loading qrels")):
+            # 限制样本数量
+            if self.max_samples is not None and idx >= self.max_samples:
+                break
+                
+            target_image_id = data['target_image_id']
+            q_texts = data.get('query_texts', [])
             
             # 为每个query text创建一个qrel
             for text_idx, q_text in enumerate(q_texts):
                 qid = f"{idx}_{text_idx}"
-                qrels_dict[qid] = {t_img: 1}  # t_img是正确答案
+                qrels_dict[qid] = {target_image_id: 1}  # target_image_id是正确答案
         
         # Save to file if save_dir provided
         if save_dir is not None:
@@ -171,41 +177,40 @@ class MegaPairsEvalDataLoader(AbsEvalDataLoader):
         split: str = 'test',
         save_dir: Optional[str] = None
     ) -> datasets.DatasetDict:
-        """Load queries from HuggingFace MegaPairs dataset.
+        """Load queries from local parquet MegaPairs dataset.
         
         每个query包含：query image + query text instruction
         """
+        if not self.use_local_data:
+            raise NotImplementedError("Remote loading not supported, use local parquet data")
+        
         logger.info(f"Loading queries for split: {split}")
         
-        # Load dataset
+        # Load dataset from local parquet files
         mega_pairs = datasets.load_dataset(
-            self.dataset_name,
-            cache_dir=self.cache_dir,
-            token=self.token,
-            download_mode=self.hf_download_mode
+            'parquet',
+            data_dir=self.dataset_dir,
+            streaming=True
         )
-        
-        if split not in mega_pairs:
-            raise ValueError(f"Split {split} not found in dataset. Available: {list(mega_pairs.keys())}")
         
         queries_dict = {}
         
         # 为每个q_text创建一个query
-        for idx, data in enumerate(tqdm(mega_pairs[split], desc=f"Loading queries from {split}")):
-            q_img = data['q_img']
-            q_texts = data.get('q_texts', [])
-            
-            if self.image_root_dir:
-                q_img_path = os.path.join(self.image_root_dir, q_img)
-            else:
-                q_img_path = q_img
+        for idx, data in enumerate(tqdm(mega_pairs['train'], desc="Loading queries")):
+            # 限制样本数量
+            if self.max_samples is not None and idx >= self.max_samples:
+                break
+                
+            # query_image_id = data['query_image_id']  # 未使用
+            query_image_bytes = data['query_image']
+            q_texts = data.get('query_texts', [])
             
             # 为每个query text创建一个query
             for text_idx, q_text in enumerate(q_texts):
                 qid = f"{idx}_{text_idx}"
                 queries_dict[qid] = {
                     'text': q_text,
-                    'image': q_img_path
+                    'image': query_image_bytes  # 直接存储 bytes
                 }
         
         # Save to file if save_dir provided
@@ -214,10 +219,13 @@ class MegaPairsEvalDataLoader(AbsEvalDataLoader):
             queries_path = os.path.join(save_dir, f'{split}_queries.jsonl')
             with open(queries_path, 'w', encoding='utf-8') as f:
                 for qid, query_data in tqdm(queries_dict.items(), desc="Saving queries"):
+                    # 注意：这里不能直接保存 bytes 到 JSON，需要 base64 编码
+                    import base64
+                    image_b64 = base64.b64encode(query_data['image']).decode('utf-8')
                     f.write(json.dumps({
                         'id': qid,
                         'text': query_data['text'],
-                        'image': query_data['image']
+                        'image': image_b64  # base64 编码的 bytes
                     }, ensure_ascii=False) + '\n')
             logger.info(f"Queries saved to {queries_path}")
         
@@ -227,7 +235,7 @@ class MegaPairsEvalDataLoader(AbsEvalDataLoader):
         """Load corpus from local files."""
         corpus_path = os.path.join(save_dir, 'corpus.jsonl')
         if self.force_redownload or not os.path.exists(corpus_path):
-            logger.warning(f"Corpus not found in {corpus_path}. Downloading from remote.")
+            logger.warning(f"Corpus not found in {corpus_path}. Loading from parquet data.")
             return self._load_remote_corpus(dataset_name=dataset_name, save_dir=save_dir)
         
         logger.info(f"Loading corpus from {corpus_path}")
@@ -235,8 +243,17 @@ class MegaPairsEvalDataLoader(AbsEvalDataLoader):
         
         corpus = {}
         for e in corpus_data:
+            # 检查是否是 base64 编码的 bytes
+            image_data = e.get('image', '')
+            if isinstance(image_data, str) and len(image_data) > 100:  # 可能是 base64
+                try:
+                    import base64
+                    image_data = base64.b64decode(image_data)
+                except Exception:
+                    pass  # 如果不是 base64，保持原样
+            
             corpus[e['id']] = {
-                'image': e.get('image', ''),
+                'image': image_data,
                 'text': e.get('text', '')
             }
         
@@ -275,7 +292,7 @@ class MegaPairsEvalDataLoader(AbsEvalDataLoader):
         
         queries_path = os.path.join(save_dir, f'{split}_queries.jsonl')
         if self.force_redownload or not os.path.exists(queries_path):
-            logger.warning(f"Queries not found in {queries_path}. Downloading from remote.")
+            logger.warning(f"Queries not found in {queries_path}. Loading from parquet data.")
             return self._load_remote_queries(dataset_name=dataset_name, split=split, save_dir=save_dir)
         
         logger.info(f"Loading queries from {queries_path}")
@@ -283,9 +300,18 @@ class MegaPairsEvalDataLoader(AbsEvalDataLoader):
         
         queries = {}
         for e in queries_data:
+            # 检查是否是 base64 编码的 bytes
+            image_data = e.get('image', '')
+            if isinstance(image_data, str) and len(image_data) > 100:  # 可能是 base64
+                try:
+                    import base64
+                    image_data = base64.b64decode(image_data)
+                except Exception:
+                    pass  # 如果不是 base64，保持原样
+            
             queries[e['id']] = {
                 'text': e.get('text', ''),
-                'image': e.get('image', '')
+                'image': image_data
             }
         
         return datasets.DatasetDict(queries)

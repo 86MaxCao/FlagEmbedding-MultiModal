@@ -307,15 +307,19 @@ class LLaVANextForEmbedding(LlavaNextForConditionalGeneration):
                 inputs = self.processor(text=text_input, return_tensors="pt", padding=True)
 
         else:
-            if text is None:
+            if images is None:
+                # Handle case where images is None but text is a list
+                text_input = [self.prepare_text_input(None, _text, q_or_c, task_instruction) for _text in text]
+                inputs = self.processor(text=text_input, return_tensors="pt", padding=True)
+            elif text is None:
                 text = [None] * len(images)
-            text_input = [self.prepare_text_input(_image, _text, q_or_c, task_instruction) for _image, _text in zip(images, text)]
-            
-            if images is not None:
+                text_input = [self.prepare_text_input(_image, _text, q_or_c, task_instruction) for _image, _text in zip(images, text)]
                 images = [Image.open(_image).resize((512,512)).convert("RGB") for _image in images]
                 inputs = self.processor(images=images, text=text_input, return_tensors="pt", padding=True)
             else:
-                inputs = self.processor(text=text_input, return_tensors="pt", padding=True)
+                text_input = [self.prepare_text_input(_image, _text, q_or_c, task_instruction) for _image, _text in zip(images, text)]
+                images = [Image.open(_image).resize((512,512)).convert("RGB") for _image in images]
+                inputs = self.processor(images=images, text=text_input, return_tensors="pt", padding=True)
         
         inputs = inputs.to(self.device)
 

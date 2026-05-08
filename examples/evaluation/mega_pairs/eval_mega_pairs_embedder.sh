@@ -7,22 +7,48 @@ if [ -z "$HF_HUB_CACHE" ]; then
     export HF_HUB_CACHE="$HOME/.cache/huggingface/hub"
 fi
 
-# Evaluation arguments
-eval_args="\
-    --eval_name mega_pairs \
-    --dataset_name JUNJIE99/MegaPairs \
-    --splits test \
-    --corpus_embd_save_dir ./mega_pairs/corpus_embd \
-    --output_dir ./mega_pairs/search_results \
-    --search_top_k 1000 \
-    --cache_path $HF_HUB_CACHE \
-    --overwrite False \
-    --k_values 1 3 5 10 20 50 100 \
-    --eval_output_method markdown \
-    --eval_output_path ./mega_pairs/embedder_eval_results.md \
-    --eval_metrics ndcg_at_10 recall_at_10 recall_at_50 map \
-    --ignore_identical_ids False \
-"
+# Quick test mode (uncomment to test with first 100 samples)
+# QUICK_TEST=true
+
+if [ "$QUICK_TEST" = "true" ]; then
+    echo "Running in QUICK TEST mode (first 100 samples, no cache)"
+    eval_args="\
+        --eval_name mega_pairs \
+        --dataset_dir ~/.cache/huggingface/datasets/MegaPairs-flat-final/data \
+        --use_local_data True \
+        --max_samples 100 \
+        --skip_corpus_cache True \
+        --splits test \
+        --corpus_embd_save_dir None \
+        --output_dir ./mega_pairs/search_results \
+        --search_top_k 1000 \
+        --cache_path $HF_HUB_CACHE \
+        --overwrite False \
+        --k_values 1 3 5 10 20 50 100 \
+        --eval_output_method markdown \
+        --eval_output_path ./mega_pairs/embedder_eval_results.md \
+        --eval_metrics ndcg_at_10 recall_at_10 recall_at_50 map \
+        --ignore_identical_ids False \
+    "
+else
+    echo "Running in FULL EVALUATION mode"
+    eval_args="\
+        --eval_name mega_pairs \
+        --dataset_dir ~/.cache/huggingface/datasets/MegaPairs-flat-final/data \
+        --use_local_data True \
+        --splits test \
+        --corpus_embd_save_dir ./mega_pairs/corpus_embd \
+        --output_dir ./mega_pairs/search_results \
+        --search_top_k 1000 \
+        --cache_path $HF_HUB_CACHE \
+        --overwrite False \
+        --k_values 1 3 5 10 20 50 100 \
+        --eval_output_method markdown \
+        --eval_output_path ./mega_pairs/embedder_eval_results.md \
+        --eval_metrics ndcg_at_10 recall_at_10 recall_at_50 map \
+        --ignore_identical_ids False \
+    "
+fi
 
 # Model arguments
 model_args="\

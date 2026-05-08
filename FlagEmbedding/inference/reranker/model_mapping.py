@@ -6,6 +6,7 @@ from collections import OrderedDict
 from FlagEmbedding.abc.inference import AbsReranker
 from FlagEmbedding.inference.reranker import FlagReranker, FlagLLMReranker, LayerWiseFlagLLMReranker, LightWeightFlagLLMReranker
 from FlagEmbedding.inference.reranker.multimodal import MultimodalReranker
+from FlagEmbedding.inference.reranker.qwen3_vl_reranker import Qwen3VLReranker
 
 
 class RerankerModelClass(Enum):
@@ -14,6 +15,7 @@ class RerankerModelClass(Enum):
     DECODER_ONLY_LAYERWISE = "decoder-only-layerwise"
     DECODER_ONLY_LIGHTWEIGHT = "decoder-only-lightweight"
     MULTIMODAL_BASE = "multimodal-base"
+    QWEN3_VL_RERANKER = "qwen3-vl-reranker"
 
 
 RERANKER_CLASS_MAPPING = OrderedDict([
@@ -21,7 +23,8 @@ RERANKER_CLASS_MAPPING = OrderedDict([
     (RerankerModelClass.DECODER_ONLY_BASE, FlagLLMReranker),
     (RerankerModelClass.DECODER_ONLY_LAYERWISE, LayerWiseFlagLLMReranker),
     (RerankerModelClass.DECODER_ONLY_LIGHTWEIGHT, LightWeightFlagLLMReranker),
-    (RerankerModelClass.MULTIMODAL_BASE, MultimodalReranker)
+    (RerankerModelClass.MULTIMODAL_BASE, MultimodalReranker),
+    (RerankerModelClass.QWEN3_VL_RERANKER, Qwen3VLReranker),
 ])
 
 
@@ -78,5 +81,12 @@ AUTO_RERANKER_MAPPING = OrderedDict([
         "jina-reranker-m0",
         RerankerConfig(MultimodalReranker, trust_remote_code=True)
     ),
-    # TODO: Add more models.
+    (
+        "Qwen3-VL-Reranker-2B",
+        RerankerConfig(Qwen3VLReranker, trust_remote_code=True)
+    ),
+    (
+        "Qwen3-VL-Reranker-8B",
+        RerankerConfig(Qwen3VLReranker, trust_remote_code=True)
+    ),
 ])

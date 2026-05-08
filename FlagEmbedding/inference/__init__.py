@@ -3,13 +3,14 @@ from .auto_reranker import FlagAutoReranker
 from .embedder import (
     FlagModel, BGEM3FlagModel,
     FlagICLModel, FlagLLMModel,
-    EmbedderModelClass, FlagMLLMModel
+    EmbedderModelClass, FlagMLLMModel, Qwen3VLEmbeddingModel,
 )
 from .reranker import (
     FlagReranker,
     FlagLLMReranker, LayerWiseFlagLLMReranker, LightWeightFlagLLMReranker,
     MultimodalReranker,
-    RerankerModelClass
+    Qwen3VLReranker,
+    RerankerModelClass,
 )
 
 
@@ -23,9 +24,11 @@ __all__ = [
     "FlagICLModel",
     "FlagLLMModel",
     "FlagMLLMModel",
+    "Qwen3VLEmbeddingModel",
     "FlagReranker",
     "FlagLLMReranker",
     "LayerWiseFlagLLMReranker",
     "LightWeightFlagLLMReranker",
     "MultimodalReranker",
+    "Qwen3VLReranker",
 ]

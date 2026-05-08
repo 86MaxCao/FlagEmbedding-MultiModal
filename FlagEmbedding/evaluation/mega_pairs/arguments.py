@@ -1,4 +1,5 @@
 from dataclasses import dataclass, field
+from typing import Optional
 
 from FlagEmbedding.abc.evaluation.arguments import AbsEvalArgs
 
@@ -8,12 +9,20 @@ class MegaPairsEvalArgs(AbsEvalArgs):
     """
     Arguments for MegaPairs evaluation.
     """
-    dataset_name: str = field(
-        default="JUNJIE99/MegaPairs",
-        metadata={"help": "HuggingFace dataset name for MegaPairs. Default: JUNJIE99/MegaPairs"}
+    dataset_dir: str = field(
+        default="~/.cache/huggingface/datasets/MegaPairs-flat-final/data",
+        metadata={"help": "Local parquet data directory for MegaPairs"}
     )
-    image_root_dir: str = field(
+    use_local_data: bool = field(
+        default=True,
+        metadata={"help": "Whether to use local parquet data instead of HF dataset"}
+    )
+    max_samples: Optional[int] = field(
         default=None,
-        metadata={"help": "Root directory for images. If None, will use paths from dataset directly."}
+        metadata={"help": "Maximum number of samples to evaluate (for quick testing)"}
+    )
+    skip_corpus_cache: bool = field(
+        default=False,
+        metadata={"help": "Skip saving corpus embeddings to disk"}
     )
 

@@ -108,14 +108,17 @@ class JinaVLForRanking(Qwen2VLForConditionalGeneration):
             **kwargs,
         )
 
-        # get the hidden states of the last layer
-        hidden_states = outputs.hidden_states[-1]
+        # Step 1: 获取最后一层的hidden states
+        hidden_states = outputs.hidden_states[-1]  # shape: (batch_size, seq_len, hidden_size)
 
-        # IMPORTANT: the padding token must be on the left side
-        # get the hidden states of the last token and apply the linear layer
-        pooled_logits = self.score(hidden_states[:, -1])
+        # Step 2: 取最后一个token的hidden state
+        last_token_hidden = hidden_states[:, -1]  # shape: (batch_size, hidden_size)
 
-        return pooled_logits.squeeze(-1)
+        # Step 3: 通过MLP得到分数
+        pooled_logits = self.score(last_token_hidden)  # shape: (batch_size, 1)
+
+        # Step 4: 去掉最后一个维度
+        return pooled_logits.squeeze(-1)  # shape: (batch_size,)
 
     @torch.no_grad()
     def compute_score(

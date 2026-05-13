@@ -1,3 +1,17 @@
+# FlagEmbedding-MultiModal  
+> Multimodal Extension of FlagEmbedding (non-official)
+
+![License](https://img.shields.io/badge/License-Apache%202.0-blue.svg)
+![Python](https://img.shields.io/badge/python-≥3.8-green.svg)
+
+## Disclaimer / 声明
+This repository is a **personal fork** maintained by  
+[@86MaxCao](https://github.com/86MaxCao) and is **not affiliated with**  
+[FlagOpen](https://github.com/FlagOpen).  
+All original code is under the Apache 2.0 License; see [LICENSE](LICENSE) for details.
+
+
+
 [<img src="./imgs/FlagOpen.png">](https://flagopen.baai.ac.cn/)
 
 <h1 align="center">⚡️BGE: One-Stop Retrieval Toolkit For Search and RAG</h1>
@@ -42,6 +56,8 @@
 
 ## News
 
+- 5/11/2026: Full compatibility with **transformers 5.8.0 + torch 2.10.0** (`latest` env). All patches consolidated into `FlagEmbedding/compat.py`. Add **Qwen3-VL-Reranker fine-tuning** support (2B/8B). Add **Qwen3-Reranker** text-only inference and fine-tuning (0.6B/4B/8B). Add **Qwen3-Embedding** fine-tuning (0.6B/4B/8B). jina-reranker-m0 fine-tune now works in latest env. See [CHANGELOG](docs/CHANGELOG_20260511_164720.md) for details.
+- 5/10/2025: Add multimodal fine-tuning support for **Qwen3-VL-Embedding** (2B/8B) with InfoNCE contrastive loss, and **jina-reranker-m0** with pairwise/listwise loss. Add inference support for **Qwen3-VL-Embedding**, **Qwen3-VL-Reranker**, and **Qwen3-Embedding** models. See [CHANGELOG](docs/CHANGELOG.md) for details.
 - 3/6/2025: :fire::fire: Introduce **BGE-VL** ([HF repo](https://huggingface.co/collections/BAAI/megapairs-67c6bbe49c15a9e7a7c69d92)), State-Of-The-Art multimodal embedding models to support Any visual search applications (everything, including text-to-image, image-to-text, image&prompt-to-image, text-to-image&text, and more)! They are released under the MIT license and are completely free for both academic and commercial use. We also release **MegaPairs** ([repo](https://github.com/VectorSpaceLab/MegaPairs), [paper](https://arxiv.org/abs/2412.14475)), a massive synthetic dataset which empowers BGE-VL!
 - 12/5/2024: :book: We built the [BGE documentation](https://www.bge-model.com) for centralized BGE information and materials!
 - 10/29/2024: :earth_asia: We created WeChat group for BGE. Scan the [QR code](./imgs/BGE_WeChat_Group.png) to join the group chat! To get the first hand message about our updates and new release, or having any questions or ideas, join us now!
@@ -200,6 +216,38 @@ The following contents are releasing in the upcoming weeks:
 | [BAAI/bge-base-zh](https://huggingface.co/BAAI/bge-base-zh)               |   Chinese |                                    a base-scale model but with similar ability to `bge-large-zh`                                    |                                     `为这个句子生成表示以用于检索相关文章：`                                      |
 | [BAAI/bge-small-zh](https://huggingface.co/BAAI/bge-small-zh)             |   Chinese |                                        a small-scale model but with competitive performance                                         |                                     `为这个句子生成表示以用于检索相关文章：`                                      |
 
+### Multimodal Embedders
+
+| Model | Modality | Pooling | Inference | Fine-tuning | Description |
+|:------|:--------:|:-------:|:---------:|:-----------:|:------------|
+| [BAAI/BGE-VL-MLLM-S1](https://huggingface.co/BAAI/BGE-VL-MLLM-S1) | Image+Text | last_token | Yes | Yes | Multimodal embedding model from BGE-VL series |
+| [BAAI/BGE-VL-MLLM-S2](https://huggingface.co/BAAI/BGE-VL-MLLM-S2) | Image+Text | last_token | Yes | Yes | Multimodal embedding model from BGE-VL series |
+| [Qwen/Qwen3-VL-Embedding-2B](https://huggingface.co/Qwen/Qwen3-VL-Embedding-2B) | Image+Text | last_token | Yes | Yes | Qwen3-VL multimodal embedding model (2B) |
+| [Qwen/Qwen3-VL-Embedding-8B](https://huggingface.co/Qwen/Qwen3-VL-Embedding-8B) | Image+Text | last_token | Yes | Yes | Qwen3-VL multimodal embedding model (8B) |
+
+### Multimodal Rerankers
+
+| Model | Modality | Inference | Fine-tuning | Loss | Description |
+|:------|:--------:|:---------:|:-----------:|:----:|:------------|
+| [jinaai/jina-reranker-m0](https://huggingface.co/jinaai/jina-reranker-m0) | Image+Text | Yes | Yes | Pairwise / Listwise | Multimodal reranker based on Qwen2-VL |
+| [Qwen/Qwen3-VL-Reranker-2B](https://huggingface.co/Qwen/Qwen3-VL-Reranker-2B) | Image+Text | Yes | Yes | Pairwise / Listwise | Qwen3-VL multimodal reranker (2B) |
+| [Qwen/Qwen3-VL-Reranker-8B](https://huggingface.co/Qwen/Qwen3-VL-Reranker-8B) | Image+Text | Yes | Yes | Pairwise / Listwise | Qwen3-VL multimodal reranker (8B) |
+
+### Text Rerankers (Newly Supported)
+
+| Model | Language | Inference | Fine-tuning | Loss | Description |
+|:------|:--------:|:---------:|:-----------:|:----:|:------------|
+| [Qwen/Qwen3-Reranker-0.6B](https://huggingface.co/Qwen/Qwen3-Reranker-0.6B) | Multilingual | Yes | Yes | Pairwise / Listwise | Qwen3 text reranker model (0.6B) |
+| [Qwen/Qwen3-Reranker-4B](https://huggingface.co/Qwen/Qwen3-Reranker-4B) | Multilingual | Yes | Yes | Pairwise / Listwise | Qwen3 text reranker model (4B) |
+| [Qwen/Qwen3-Reranker-8B](https://huggingface.co/Qwen/Qwen3-Reranker-8B) | Multilingual | Yes | Yes | Pairwise / Listwise | Qwen3 text reranker model (8B) |
+
+### Text Embedders (Newly Supported)
+
+| Model | Language | Pooling | Inference | Fine-tuning | Description |
+|:------|:--------:|:-------:|:---------:|:-----------:|:------------|
+| [Qwen/Qwen3-Embedding-0.6B](https://huggingface.co/Qwen/Qwen3-Embedding-0.6B) | Multilingual | last_token | Yes | Yes | Qwen3 text embedding model (0.6B) |
+| [Qwen/Qwen3-Embedding-4B](https://huggingface.co/Qwen/Qwen3-Embedding-4B) | Multilingual | last_token | Yes | Yes | Qwen3 text embedding model (4B) |
+| [Qwen/Qwen3-Embedding-8B](https://huggingface.co/Qwen/Qwen3-Embedding-8B) | Multilingual | last_token | Yes | Yes | Qwen3 text embedding model (8B) |
 
 
 
@@ -257,4 +305,9 @@ If you find this repository useful, please consider giving a star :star: and cit
 
 ## License
 FlagEmbedding is licensed under the [MIT License](https://github.com/FlagOpen/FlagEmbedding/blob/master/LICENSE). 
+
+## Original Copyright
+Copyright 2023 FlagOpen.  
+Source repository: [FlagOpen/FlagEmbedding](https://github.com/FlagOpen/FlagEmbedding)  
+Licensed under the Apache License, Version 2.0.
 

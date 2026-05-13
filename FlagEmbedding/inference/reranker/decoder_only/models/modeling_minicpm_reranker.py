@@ -50,7 +50,10 @@ from transformers.utils import (
     logging,
     replace_return_docstrings,
 )
-from FlagEmbedding.utils.transformers_compat import is_torch_fx_available
+try:
+    from transformers.utils.import_utils import is_torch_fx_available
+except ImportError:
+    is_torch_fx_available = lambda: False
 from .configuration_minicpm_reranker import LayerWiseMiniCPMConfig
 import re
 

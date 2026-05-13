@@ -4,7 +4,8 @@ from dataclasses import dataclass
 from collections import OrderedDict
 
 from FlagEmbedding.abc.inference import AbsEmbedder
-from FlagEmbedding.inference.embedder import FlagModel, BGEM3FlagModel, FlagLLMModel, FlagICLModel, FlagPseudoMoEModel
+from FlagEmbedding.inference.embedder import FlagModel, BGEM3FlagModel, FlagLLMModel, FlagICLModel, FlagPseudoMoEModel, FlagMLLMModel
+from FlagEmbedding.inference.embedder.qwen3_vl_embedding import Qwen3VLEmbeddingModel
 
 
 class EmbedderModelClass(Enum):
@@ -13,6 +14,8 @@ class EmbedderModelClass(Enum):
     DECODER_ONLY_BASE = "decoder-only-base"
     DECODER_ONLY_ICL = "decoder-only-icl"
     DECODER_ONLY_PSEUDO_MOE = "decoder-only-pseudo_moe"
+    MULTIMODAL_MLLM = "multimodal-mllm"
+    QWEN3_VL_EMBEDDING = "qwen3-vl-embedding"
 
 
 EMBEDDER_CLASS_MAPPING = OrderedDict([
@@ -20,7 +23,9 @@ EMBEDDER_CLASS_MAPPING = OrderedDict([
     (EmbedderModelClass.ENCODER_ONLY_M3, BGEM3FlagModel),
     (EmbedderModelClass.DECODER_ONLY_BASE, FlagLLMModel),
     (EmbedderModelClass.DECODER_ONLY_ICL, FlagICLModel),
-    (EmbedderModelClass.DECODER_ONLY_PSEUDO_MOE, FlagPseudoMoEModel)
+    (EmbedderModelClass.DECODER_ONLY_PSEUDO_MOE, FlagPseudoMoEModel),
+    (EmbedderModelClass.MULTIMODAL_MLLM, FlagMLLMModel),
+    (EmbedderModelClass.QWEN3_VL_EMBEDDING, Qwen3VLEmbeddingModel),
 ])
 
 
@@ -107,6 +112,26 @@ BGE_MAPPING = OrderedDict([
     (
         "bge-small-zh",
         EmbedderConfig(FlagModel, PoolingMethod.CLS)
+    ),
+    (
+        "BGE-VL-MLLM-S1",
+        EmbedderConfig(FlagMLLMModel, PoolingMethod.LAST_TOKEN, trust_remote_code=True)
+    ),
+    (
+        "BGE-VL-MLLM-S2",
+        EmbedderConfig(FlagMLLMModel, PoolingMethod.LAST_TOKEN, trust_remote_code=True)
+    ),
+])
+
+# Qwen3-VL multimodal embedding (HF: Qwen/Qwen3-VL-Embedding-*)
+QWEN3_VL_EMBEDDING_MAPPING = OrderedDict([
+    (
+        "Qwen3-VL-Embedding-2B",
+        EmbedderConfig(Qwen3VLEmbeddingModel, PoolingMethod.LAST_TOKEN, trust_remote_code=True),
+    ),
+    (
+        "Qwen3-VL-Embedding-8B",
+        EmbedderConfig(Qwen3VLEmbeddingModel, PoolingMethod.LAST_TOKEN, trust_remote_code=True),
     ),
 ])
 
@@ -258,6 +283,7 @@ BCE_MAPPING = OrderedDict([
 # Combine all mappings
 AUTO_EMBEDDER_MAPPING = OrderedDict()
 AUTO_EMBEDDER_MAPPING.update(BGE_MAPPING)
+AUTO_EMBEDDER_MAPPING.update(QWEN3_VL_EMBEDDING_MAPPING)
 AUTO_EMBEDDER_MAPPING.update(QWEN3_EMBEDDING_MAPPING)
 AUTO_EMBEDDER_MAPPING.update(E5_MAPPING)
 AUTO_EMBEDDER_MAPPING.update(GTE_MAPPING)

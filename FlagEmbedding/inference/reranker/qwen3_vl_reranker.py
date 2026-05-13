@@ -7,6 +7,9 @@ import torch
 from tqdm import tqdm
 
 from FlagEmbedding.abc.inference import AbsReranker
+from FlagEmbedding.compat import apply_qwen3_vl_reranker_patches
+
+apply_qwen3_vl_reranker_patches()
 
 
 class Qwen3VLReranker(AbsReranker):

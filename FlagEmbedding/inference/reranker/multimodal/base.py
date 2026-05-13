@@ -7,8 +7,11 @@ from PIL import Image
 from transformers.image_utils import load_image
 
 from FlagEmbedding.abc.inference import AbsReranker
+from FlagEmbedding.compat import apply_jina_reranker_patches
 
 LOGIT_BIAS = 2.65  # logit bias for sigmoid normalization
+
+apply_jina_reranker_patches()
 
 
 def load_images(images, lazy_load: bool = True):
@@ -106,12 +109,22 @@ class MultimodalReranker(AbsReranker):
         self.trust_remote_code = trust_remote_code
         
         # Load model
+        # ignore_mismatched_sizes: JinaVLForRanking replaces lm_head with nn.Identity(),
+        # so lm_head.weight in the checkpoint (shape [vocab_size, hidden_size]) mismatches
+        # the Identity's empty weight. We tolerate the mismatch and fix lm_head afterwards.
         self.model = AutoModel.from_pretrained(
             model_name_or_path,
             torch_dtype="auto" if not use_fp16 else torch.float16,
             trust_remote_code=trust_remote_code,
             cache_dir=cache_dir,
+            ignore_mismatched_sizes=True,
         )
+
+        # After from_pretrained, lm_head may still carry a meta-device weight from the
+        # Identity patch; replace it with a clean Identity so .to(device) works.
+        import torch.nn as nn
+        if isinstance(self.model.lm_head, nn.Identity):
+            self.model.lm_head = nn.Identity()
         
         # Load processor
         self.processor = AutoProcessor.from_pretrained(

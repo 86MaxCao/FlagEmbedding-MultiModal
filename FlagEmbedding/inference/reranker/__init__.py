@@ -2,6 +2,7 @@ from .decoder_only import FlagLLMReranker, LayerWiseFlagLLMReranker, LightWeight
 from .encoder_only import FlagReranker
 from .multimodal import MultimodalReranker
 from .qwen3_vl_reranker import Qwen3VLReranker
+from .qwen3_reranker import Qwen3Reranker
 from .model_mapping import RerankerModelClass
 
 __all__ = [
@@ -11,5 +12,6 @@ __all__ = [
     "LightWeightFlagLLMReranker",
     "MultimodalReranker",
     "Qwen3VLReranker",
+    "Qwen3Reranker",
     "RerankerModelClass",
 ]

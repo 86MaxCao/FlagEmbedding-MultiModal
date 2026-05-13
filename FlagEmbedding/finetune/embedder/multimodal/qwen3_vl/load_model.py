@@ -2,23 +2,20 @@ import os
 import re
 import torch
 import logging
-from transformers import AutoConfig, AutoModel, AutoTokenizer
+from transformers import AutoConfig, AutoModel, AutoProcessor, AutoTokenizer
 from peft import LoraConfig, TaskType, get_peft_model, PeftModel
 
-from .arguments import MultimodalEmbedderModelArguments
+from FlagEmbedding.compat import apply_qwen3_vl_embedding_patches
+from .arguments import Qwen3VLEmbedderModelArguments
 
 logger = logging.getLogger(__name__)
 
+# Apply compatibility patches at module import time
+apply_qwen3_vl_embedding_patches()
+
 
 def find_largest_checkpoint(checkpoint_dir):
-    """Find the largest checkpoint from directory.
-
-    Args:
-        checkpoint_dir (str): Directory to the checkpoint.
-
-    Returns:
-        str: Directory to the checkpoint, None no matching found.
-    """
+    """Find the largest checkpoint from directory."""
     checkpoint_pattern = re.compile(r'checkpoint-(\d+)')
     max_number = -1
     max_checkpoint_file = None
@@ -35,17 +32,17 @@ def find_largest_checkpoint(checkpoint_dir):
         return None
 
 
-def get_model(model_args: MultimodalEmbedderModelArguments, output_dir: str, resize: bool, resize_tokens: int):
-    """Get the multimodal model with processor initialization.
+def get_model(model_args: Qwen3VLEmbedderModelArguments, output_dir: str, resize: bool, resize_tokens: int):
+    """Load Qwen3-VL-Embedding model with LoRA.
 
     Args:
-        model_args (MultimodalEmbedderModelArguments): Model arguments instance.
-        output_dir (str): Directory to save the model.
-        resize (bool): Whether to resize the number of tokens.
-        resize_tokens (int): The new token size.
+        model_args: Model arguments.
+        output_dir: Output directory.
+        resize: Whether to resize token embeddings.
+        resize_tokens: New token size for resizing.
 
     Returns:
-        transformers.PreTrainedModel or PeftModel: The loaded model.
+        Tuple of (model, processor).
     """
     if model_args.config_name:
         config = AutoConfig.from_pretrained(
@@ -63,10 +60,20 @@ def get_model(model_args: MultimodalEmbedderModelArguments, output_dir: str, res
         )
     else:
         raise ValueError(
-            "You are instantiating a new config instance from scratch. This is not supported by this script."
+            "You are instantiating a new config instance from scratch. "
+            "This is not supported by this script."
         )
     config.use_cache = False
 
+    # Load processor for Qwen3VL
+    processor = AutoProcessor.from_pretrained(
+        model_args.model_name_or_path,
+        token=model_args.token,
+        cache_dir=model_args.cache_dir,
+        trust_remote_code=model_args.trust_remote_code,
+    )
+
+    # Load model
     if model_args.model_name_or_path:
         model_kw = {
             "token": model_args.token,
@@ -85,13 +92,6 @@ def get_model(model_args: MultimodalEmbedderModelArguments, output_dir: str, res
         logger.info("Training new model from scratch")
         model = model_args.from_config(config)
 
-    # Initialize processor for multimodal models
-    if hasattr(model, 'set_processor'):
-        logger.info(f"Initializing processor for multimodal model: {model_args.model_name_or_path}")
-        model.set_processor(model_args.model_name_or_path)
-    else:
-        logger.warning("Model does not have set_processor method. Make sure it's a multimodal model.")
-
     if model_args.raw_peft is not None:
         model.set_input_embeddings(torch.load(os.path.join(model_args.raw_peft, 'embedding', 'emb.pth')))
         model = PeftModel.from_pretrained(model, model_args.raw_peft)
@@ -101,12 +101,12 @@ def get_model(model_args: MultimodalEmbedderModelArguments, output_dir: str, res
         model.resize_token_embeddings(resize_tokens)
         os.makedirs(os.path.join(output_dir, 'embedding'), exist_ok=True)
         torch.save(model.embed_tokens, os.path.join(output_dir, 'embedding', 'emb.pth'))
-        target_modules = model_args.target_modules
-    else:
-        target_modules = model_args.target_modules
-        if 'embed_tokens' in target_modules:
-            target_modules.remove('embed_tokens')
 
+    target_modules = model_args.target_modules
+    if not resize and 'embed_tokens' in target_modules:
+        target_modules.remove('embed_tokens')
+
+    # Apply LoRA
     if model_args.from_peft is not None:
         if os.path.exists(os.path.join(model_args.from_peft, 'embedding')):
             model.set_input_embeddings(torch.load(os.path.join(model_args.from_peft, 'embedding', 'emb.pth')))
@@ -127,17 +127,11 @@ def get_model(model_args: MultimodalEmbedderModelArguments, output_dir: str, res
             model = get_peft_model(model, peft_config)
             model.print_trainable_parameters()
 
-    return model
+    return model, processor
 
 
-def save_merged_model(model_args: MultimodalEmbedderModelArguments, output_dir: str):
-    """
-    Loads a multimodal model with specified configurations, merges it with PEFT layers if available.
-
-    Args:
-        model_args (MultimodalEmbedderModelArguments): Model arguments instance.
-        output_dir (str): Directory to save the model.
-    """
+def save_merged_model(model_args: Qwen3VLEmbedderModelArguments, output_dir: str):
+    """Load and merge LoRA weights, then save the full model."""
     if model_args.config_name:
         config = AutoConfig.from_pretrained(
             model_args.config_name,
@@ -153,31 +147,20 @@ def save_merged_model(model_args: MultimodalEmbedderModelArguments, output_dir: 
             trust_remote_code=model_args.trust_remote_code,
         )
     else:
-        raise ValueError(
-            "You are instantiating a new config instance from scratch. This is not supported by this script."
-        )
+        raise ValueError("Cannot determine config for model merging.")
+
     config.use_cache = False
 
-    if model_args.model_name_or_path:
-        model_kw = {
-            "token": model_args.token,
-            "cache_dir": model_args.cache_dir,
-            "from_tf": bool(".ckpt" in model_args.model_name_or_path),
-            "config": config,
-            "trust_remote_code": model_args.trust_remote_code,
-        }
-        if model_args.use_flash_attn:
-            model_kw["attn_implementation"] = "flash_attention_2"
-        model = AutoModel.from_pretrained(
-            model_args.model_name_or_path,
-            **model_kw
-        )
-    else:
-        model = model_args.from_config(config)
-
-    # Initialize processor for multimodal models
-    if hasattr(model, 'set_processor'):
-        model.set_processor(model_args.model_name_or_path)
+    model_kw = {
+        "token": model_args.token,
+        "cache_dir": model_args.cache_dir,
+        "from_tf": bool(".ckpt" in model_args.model_name_or_path),
+        "config": config,
+        "trust_remote_code": model_args.trust_remote_code,
+    }
+    if model_args.use_flash_attn:
+        model_kw["attn_implementation"] = "flash_attention_2"
+    model = AutoModel.from_pretrained(model_args.model_name_or_path, **model_kw)
 
     if model_args.raw_peft is not None:
         model.set_input_embeddings(torch.load(os.path.join(model_args.raw_peft, 'embedding', 'emb.pth')))
@@ -186,17 +169,14 @@ def save_merged_model(model_args: MultimodalEmbedderModelArguments, output_dir: 
 
     if os.path.exists(os.path.join(output_dir, 'embedding', 'emb.pth')):
         model.set_input_embeddings(torch.load(os.path.join(output_dir, 'embedding', 'emb.pth')))
-        model.config.vocab_size = len(tokenizer)
 
     try:
         model = PeftModel.from_pretrained(model, output_dir)
         model = model.merge_and_unload()
-    except:
+    except Exception:
         model = PeftModel.from_pretrained(model, find_largest_checkpoint(output_dir))
         model = model.merge_and_unload()
 
     tokenizer = AutoTokenizer.from_pretrained(output_dir, trust_remote_code=model_args.trust_remote_code)
     tokenizer.save_pretrained(os.path.join(output_dir, 'merged_model'))
-
     model.save_pretrained(os.path.join(output_dir, 'merged_model'))
-

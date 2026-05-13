@@ -100,7 +100,7 @@ class BiMultimodalEmbedderModel(AbsEmbedderModel):
         p_reps = self.encode(passages)
 
         if self.training:
-            scores = self.compute_similarity(q_reps, p_reps)
+            scores = self.compute_score(q_reps, p_reps)
             scores = scores / self.temperature
             
             if teacher_scores is not None:
@@ -117,7 +117,7 @@ class BiMultimodalEmbedderModel(AbsEmbedderModel):
                 target = target * (p_reps.size(0) // q_reps.size(0))
                 loss = self.compute_loss(scores, target)
         else:
-            scores = self.compute_similarity(q_reps, p_reps)
+            scores = self.compute_score(q_reps, p_reps)
             loss = None
 
         from FlagEmbedding.abc.finetune.embedder import EmbedderOutput
@@ -128,7 +128,7 @@ class BiMultimodalEmbedderModel(AbsEmbedderModel):
             p_reps=p_reps,
         )
 
-    def compute_similarity(self, q_reps, p_reps):
+    def compute_score(self, q_reps, p_reps):
         """Compute similarity scores between queries and passages.
 
         Args:

@@ -144,3 +144,18 @@ pic2.py
 # results
 en_results
 zh_results
+
+.ipynb_checkpoints/
+
+# data
+data/
+
+# Temporary test/verification files
+test_data/
+test_output/
+test_latest_env.py
+verify_jina_reranker.py
+verify_output_*.json
+
+# Qoder CLI
+.qoder/

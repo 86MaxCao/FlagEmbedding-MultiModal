@@ -1,11 +1,14 @@
+import math
+
 from tqdm import tqdm, trange
-from typing import cast, Any, List, Union, Optional
+from typing import cast, Any, Dict, List, Literal, Union, Optional
 
 import torch
 import numpy as np
 from transformers import AutoModel, AutoTokenizer
 
 from FlagEmbedding.abc.inference import AbsEmbedder
+from FlagEmbedding.compat import patch_bge_vl_language_model
 
 
 # Pooling function for LLM-based embedding models
@@ -97,6 +100,9 @@ class MultimodalMLLMEmbedder(AbsEmbedder):
             trust_remote_code=trust_remote_code,
             cache_dir=cache_dir
         )
+
+        # Patch: transformers 5.x compat for BGE-VL models
+        patch_bge_vl_language_model(self.model)
 
         # Set processor for multimodal models
         if hasattr(self.model, 'set_processor'):
@@ -246,17 +252,57 @@ class MultimodalMLLMEmbedder(AbsEmbedder):
 
         # For multimodal models, bypass the parent's instruction handling
         if hasattr(self.model, 'data_process'):
-            return self.encode_single_device(
-                sentences=sentences,
-                images=images,
-                batch_size=batch_size,
-                max_length=max_length,
-                convert_to_numpy=convert_to_numpy,
-                device=self.target_devices[0],
-                q_or_c=q_or_c,
-                task_instruction=task_instruction,
-                **kwargs
-            )
+            # Determine input count for multi-GPU decision
+            n_inputs = 0
+            if sentences is not None:
+                n_inputs = 1 if isinstance(sentences, str) else len(sentences)
+            elif images is not None:
+                n_inputs = 1 if isinstance(images, str) else len(images)
+
+            if n_inputs <= 1 or len(self.target_devices) == 1:
+                return self.encode_single_device(
+                    sentences=sentences,
+                    images=images,
+                    batch_size=batch_size,
+                    max_length=max_length,
+                    convert_to_numpy=convert_to_numpy,
+                    device=self.target_devices[0],
+                    q_or_c=q_or_c,
+                    task_instruction=task_instruction,
+                    **kwargs
+                )
+
+            # Multi-GPU: split data across devices sequentially
+            if isinstance(sentences, str):
+                sentences = [sentences]
+            if isinstance(images, str):
+                images = [images]
+
+            chunk_size = math.ceil(n_inputs / len(self.target_devices))
+            all_embeddings = []
+            for i, device in enumerate(self.target_devices):
+                start = i * chunk_size
+                end = min(start + chunk_size, n_inputs)
+                if start >= n_inputs:
+                    break
+                chunk_sentences = sentences[start:end] if sentences is not None else None
+                chunk_images = images[start:end] if images is not None else None
+                emb = self.encode_single_device(
+                    sentences=chunk_sentences,
+                    images=chunk_images,
+                    batch_size=batch_size,
+                    max_length=max_length,
+                    convert_to_numpy=convert_to_numpy,
+                    device=device,
+                    q_or_c=q_or_c,
+                    task_instruction=task_instruction,
+                    **kwargs
+                )
+                all_embeddings.append(emb)
+
+            if convert_to_numpy:
+                return np.concatenate(all_embeddings, axis=0)
+            return torch.cat(all_embeddings, dim=0)
         else:
             # For text-only models, use parent's implementation
             if sentences is None:
@@ -313,18 +359,60 @@ class MultimodalMLLMEmbedder(AbsEmbedder):
             input_was_string = False
             if isinstance(sentences, str) or isinstance(images, str):
                 input_was_string = True
-            
-            # Process inputs using model's data_process method
-            inputs = self.model.data_process(
-                images=images,
-                text=sentences,
-                q_or_c=q_or_c,
-                task_instruction=task_instruction
-            )
+
+            # Normalize: determine if we have real images
+            _has_real_images = False
+            if images is not None:
+                if isinstance(images, str):
+                    _has_real_images = True
+                elif isinstance(images, list):
+                    _has_real_images = any(img is not None for img in images)
+
+            # Align lists for data_process: it needs zip(images, text) to work
+            if sentences is None and _has_real_images:
+                _ilist = [images] if isinstance(images, str) else images
+                sentences = [None] * len(_ilist)
+            if not _has_real_images:
+                images = None
+
+            # Fix: model's data_process has a bug where zip(images, text) fails
+            # when images=None and text is a list. Workaround: batch text-only
+            # inputs individually through data_process.
+            if images is None and isinstance(sentences, list):
+                # Process as batch by calling data_process per item and merging
+                batch_inputs = []
+                for s in sentences:
+                    inp = self.model.data_process(
+                        images=None, text=s, q_or_c=q_or_c,
+                        task_instruction=task_instruction
+                    )
+                    batch_inputs.append(inp)
+                # Pad and stack
+                from transformers import BatchEncoding
+                max_len = max(inp["input_ids"].shape[-1] for inp in batch_inputs)
+                padded = {}
+                for key in batch_inputs[0].keys():
+                    tensors = []
+                    for inp in batch_inputs:
+                        t = inp[key]
+                        if t.dim() == 2 and t.shape[-1] < max_len:
+                            pad_size = max_len - t.shape[-1]
+                            t = torch.nn.functional.pad(t, (pad_size, 0), value=0 if key != "attention_mask" else 0)
+                        tensors.append(t)
+                    padded[key] = torch.cat(tensors, dim=0)
+                inputs = padded
+            else:
+                inputs = self.model.data_process(
+                    images=images,
+                    text=sentences,
+                    q_or_c=q_or_c,
+                    task_instruction=task_instruction
+                )
             
             # Get embeddings from the model
             outputs = self.model(**inputs, output_hidden_states=True)
-            embeddings = outputs[:, -1, :]  # Take the last token
+            hidden_states = outputs.last_hidden_state if hasattr(outputs, 'last_hidden_state') else outputs[0]
+            embeddings = last_token_pool(hidden_states, inputs['attention_mask'])
             
             if self.normalize_embeddings:
                 embeddings = torch.nn.functional.normalize(embeddings, dim=-1)
@@ -417,3 +505,4 @@ class MultimodalMLLMEmbedder(AbsEmbedder):
             if input_was_string:
                 return all_embeddings[0]
             return all_embeddings
+

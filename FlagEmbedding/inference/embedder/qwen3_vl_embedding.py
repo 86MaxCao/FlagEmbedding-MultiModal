@@ -115,13 +115,12 @@ class Qwen3VLEmbeddingModel(AbsEmbedder):
             else self.query_instruction_for_retrieval
         )
         sentences = self._merge_text_and_images(queries, images)
-        return self.encode_single_device(
+        return self.encode(
             sentences,
             batch_size=batch_size,
             max_length=max_length,
             convert_to_numpy=convert_to_numpy,
-            device=self.target_devices[0],
-            prompt=prompt,
+            instruction=prompt,
             **kwargs,
         )
 
@@ -143,13 +142,12 @@ class Qwen3VLEmbeddingModel(AbsEmbedder):
 
         passage_instruction = self.kwargs.get("passage_instruction_for_retrieval")
         sentences = self._merge_text_and_images(corpus, images)
-        return self.encode_single_device(
+        return self.encode(
             sentences,
             batch_size=batch_size,
             max_length=max_length,
             convert_to_numpy=convert_to_numpy,
-            device=self.target_devices[0],
-            prompt=passage_instruction,
+            instruction=passage_instruction,
             **kwargs,
         )
 
@@ -171,15 +169,42 @@ class Qwen3VLEmbeddingModel(AbsEmbedder):
         if convert_to_numpy is None:
             convert_to_numpy = self.convert_to_numpy
 
-        return self.encode_single_device(
-            sentences,
-            batch_size=batch_size,
-            max_length=max_length,
-            convert_to_numpy=convert_to_numpy,
-            device=self.target_devices[0],
-            prompt=instruction,
-            **kwargs,
-        )
+        if isinstance(sentences, str) or len(self.target_devices) == 1:
+            return self.encode_single_device(
+                sentences,
+                batch_size=batch_size,
+                max_length=max_length,
+                convert_to_numpy=convert_to_numpy,
+                device=self.target_devices[0],
+                prompt=instruction,
+                **kwargs,
+            )
+
+        # Multi-GPU: split data across devices sequentially
+        import math
+        n = len(sentences)
+        chunk_size = math.ceil(n / len(self.target_devices))
+        all_embeddings = []
+        for i, device in enumerate(self.target_devices):
+            start = i * chunk_size
+            end = min(start + chunk_size, n)
+            if start >= n:
+                break
+            chunk = sentences[start:end]
+            emb = self.encode_single_device(
+                chunk,
+                batch_size=batch_size,
+                max_length=max_length,
+                convert_to_numpy=convert_to_numpy,
+                device=device,
+                prompt=instruction,
+                **kwargs,
+            )
+            all_embeddings.append(emb)
+
+        if convert_to_numpy:
+            return np.concatenate(all_embeddings, axis=0)
+        return torch.cat(all_embeddings, dim=0)
 
     def encode_single_device(
         self,

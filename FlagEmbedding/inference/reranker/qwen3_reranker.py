@@ -123,6 +123,39 @@ class Qwen3Reranker(AbsReranker):
         out = self.tokenizer.pad(out, padding=True, return_tensors="pt", max_length=max_length)
         return out
 
+    def compute_score(
+        self,
+        sentence_pairs: Union[List[Tuple[str, str]], Tuple[str, str]],
+        **kwargs: Any,
+    ) -> Union[float, List[float]]:
+        single_input = isinstance(sentence_pairs, tuple) and len(sentence_pairs) == 2 and isinstance(sentence_pairs[0], str)
+        if single_input:
+            sentence_pairs = [sentence_pairs]
+
+        if len(sentence_pairs) == 1 or len(self.target_devices) == 1:
+            scores = self.compute_score_single_gpu(
+                sentence_pairs, device=self.target_devices[0], **kwargs
+            )
+        else:
+            # Multi-GPU: split data across devices sequentially
+            import math
+            n = len(sentence_pairs)
+            chunk_size = math.ceil(n / len(self.target_devices))
+            scores = []
+            for i, device in enumerate(self.target_devices):
+                start = i * chunk_size
+                end = min(start + chunk_size, n)
+                if start >= n:
+                    break
+                chunk_scores = self.compute_score_single_gpu(
+                    sentence_pairs[start:end], device=device, **kwargs
+                )
+                scores.extend(chunk_scores)
+
+        if single_input:
+            return scores[0] if isinstance(scores, list) else scores
+        return scores
+
     @torch.no_grad()
     def compute_score_single_gpu(
         self,
@@ -133,7 +166,7 @@ class Qwen3Reranker(AbsReranker):
         device: Optional[str] = None,
         instruction: Optional[str] = None,
         **kwargs: Any,
-    ) -> Union[float, List[float]]:
+    ) -> List[float]:
         """Compute reranking scores for sentence pairs."""
         if batch_size is None:
             batch_size = self.batch_size
@@ -173,6 +206,4 @@ class Qwen3Reranker(AbsReranker):
             scores = log_probs[:, 1].exp().cpu().float().numpy()
             all_scores.extend(scores.tolist())
 
-        if len(all_scores) == 1:
-            return all_scores[0]
         return all_scores

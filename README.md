@@ -12,7 +12,6 @@ All original code is under the Apache 2.0 License; see [LICENSE](LICENSE) for de
 
 
 
-
 [<img src="./imgs/FlagOpen.png">](https://flagopen.baai.ac.cn/)
 
 <h1 align="center">⚡️BGE: One-Stop Retrieval Toolkit For Search and RAG</h1>
@@ -311,3 +310,4 @@ FlagEmbedding is licensed under the [MIT License](https://github.com/FlagOpen/Fl
 Copyright 2023 FlagOpen.  
 Source repository: [FlagOpen/FlagEmbedding](https://github.com/FlagOpen/FlagEmbedding)  
 Licensed under the Apache License, Version 2.0.
+

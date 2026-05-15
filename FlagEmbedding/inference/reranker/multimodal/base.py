@@ -269,8 +269,6 @@ class MultimodalReranker(AbsReranker):
 
             all_scores.extend(scores.tolist())
 
-        if len(all_scores) == 1:
-            return all_scores[0]
         return all_scores
 
     def compute_score(
@@ -307,8 +305,12 @@ class MultimodalReranker(AbsReranker):
         if normalize is None:
             normalize = self.normalize
 
-        if isinstance(sentence_pairs, tuple) or len(self.target_devices) == 1:
-            return self.compute_score_single_gpu(
+        single_input = isinstance(sentence_pairs, tuple) and len(sentence_pairs) == 2 and isinstance(sentence_pairs[0], str)
+        if single_input:
+            sentence_pairs = [sentence_pairs]
+
+        if len(sentence_pairs) == 1 or len(self.target_devices) == 1:
+            scores = self.compute_score_single_gpu(
                 sentence_pairs,
                 batch_size=batch_size,
                 query_max_length=query_max_length,
@@ -319,21 +321,34 @@ class MultimodalReranker(AbsReranker):
                 doc_type=doc_type,
                 **kwargs
             )
+            if single_input:
+                return scores[0] if isinstance(scores, list) else scores
+            return scores
 
-        # Multi-GPU processing
-        if self.pool is None:
-            self.pool = self.start_multi_process_pool(AbsReranker._compute_score_multi_process_worker)
-
-        scores = self.compute_score_multi_process(
-            sentence_pairs,
-            self.pool,
-            batch_size=batch_size,
-            query_max_length=query_max_length,
-            max_length=max_length,
-            normalize=normalize,
-            query_type=query_type,
-            doc_type=doc_type,
-            **kwargs
-        )
+        # Multi-GPU: split data across devices sequentially
+        import math
+        n = len(sentence_pairs)
+        chunk_size = math.ceil(n / len(self.target_devices))
+        scores = []
+        for i, device in enumerate(self.target_devices):
+            start = i * chunk_size
+            end = min(start + chunk_size, n)
+            if start >= n:
+                break
+            chunk_scores = self.compute_score_single_gpu(
+                sentence_pairs[start:end],
+                batch_size=batch_size,
+                query_max_length=query_max_length,
+                max_length=max_length,
+                normalize=normalize,
+                device=device,
+                query_type=query_type,
+                doc_type=doc_type,
+                **kwargs
+            )
+            if isinstance(chunk_scores, list):
+                scores.extend(chunk_scores)
+            else:
+                scores.append(chunk_scores)
         return scores
 

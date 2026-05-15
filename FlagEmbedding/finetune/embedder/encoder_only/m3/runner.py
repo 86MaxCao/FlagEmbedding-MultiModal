@@ -1,7 +1,7 @@
 import os
 import torch
 import logging
-from typing import Tuple
+from typing import Tuple, Optional
 from transformers import (
     AutoModel, AutoConfig,
     AutoTokenizer, PreTrainedTokenizer
@@ -44,7 +44,8 @@ class EncoderOnlyEmbedderM3Runner(AbsEmbedderRunner):
         model_name_or_path: str,
         trust_remote_code: bool = False,
         colbert_dim: int = -1,
-        cache_dir: str = None
+        cache_dir: str = None,
+        torch_dtype: Optional[torch.dtype] = None,
     ):
         """Get the model.
 
@@ -54,6 +55,7 @@ class EncoderOnlyEmbedderM3Runner(AbsEmbedderRunner):
             trust_remote_code (bool, optional): trust_remote_code to use when loading models from HF. Defaults to ``False``.
             colbert_dim (int, optional): Colbert dim to set. Defaults to ``-1``.
             cache_dir (str, optional): HF cache dir to store the model. Defaults to ``None``.
+            torch_dtype (Optional[torch.dtype], optional): Torch dtype used when loading model weights. Defaults to ``None``.
 
         Returns:
             dict: A dictionary containing the model, colbert linear and sparse linear.
@@ -69,15 +71,18 @@ class EncoderOnlyEmbedderM3Runner(AbsEmbedderRunner):
         model = AutoModel.from_pretrained(
             model_name_or_path,
             cache_dir=cache_folder,
-            trust_remote_code=trust_remote_code
+            trust_remote_code=trust_remote_code,
+            dtype=torch_dtype,
         )
         colbert_linear = torch.nn.Linear(
             in_features=model.config.hidden_size,
-            out_features=model.config.hidden_size if colbert_dim <= 0 else colbert_dim
+            out_features=model.config.hidden_size if colbert_dim <= 0 else colbert_dim,
+            dtype=torch_dtype,
         )
         sparse_linear = torch.nn.Linear(
             in_features=model.config.hidden_size,
-            out_features=1
+            out_features=1,
+            dtype=torch_dtype,
         )
 
         colbert_model_path = os.path.join(model_name_or_path, 'colbert_linear.pt')
@@ -128,6 +133,8 @@ class EncoderOnlyEmbedderM3Runner(AbsEmbedderRunner):
             temperature=self.training_args.temperature,
             sub_batch_size=self.training_args.sub_batch_size,
             kd_loss_type=self.training_args.kd_loss_type,
+            use_mrl=self.training_args.use_mrl,
+            mrl_dims=self.training_args.mrl_dims,
             sentence_pooling_method=self.training_args.sentence_pooling_method,
             normalize_embeddings=self.training_args.normalize_embeddings,
             unified_finetuning=self.training_args.unified_finetuning,
@@ -164,7 +171,7 @@ class EncoderOnlyEmbedderM3Runner(AbsEmbedderRunner):
             args=self.training_args,
             train_dataset=self.train_dataset,
             data_collator=self.data_collator,
-            tokenizer=self.tokenizer
+            processing_class=self.tokenizer
         )
         if self.data_args.same_dataset_within_batch:
             trainer.add_callback(EmbedderTrainerCallbackForDataRefresh(self.train_dataset))

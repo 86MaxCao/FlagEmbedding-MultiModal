@@ -75,7 +75,7 @@ class AbsRerankerModel(ABC, nn.Module):
         Returns:
             RerankerOutput: Output of reranker model.
         """
-        ranker_logits = self.encode(pair)  # (batch_size * num, dim)
+        ranker_logits = self.encode(pair) # (batch_size * num, dim)
         if teacher_scores is not None:
             teacher_scores = torch.Tensor(teacher_scores)
             teacher_targets = teacher_scores.view(self.train_batch_size, -1)

@@ -160,3 +160,5 @@ verify_output_*.json
 # Qoder CLI
 .qoder/
 
+# Claude Code
+.claude/

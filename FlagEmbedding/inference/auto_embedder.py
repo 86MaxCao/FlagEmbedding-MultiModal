@@ -26,11 +26,13 @@ class FlagAutoModel:
         model_class: Optional[Union[str, EmbedderModelClass]] = None,
         normalize_embeddings: bool = True,
         use_fp16: bool = True,
+        use_bf16: bool = False,
         query_instruction_for_retrieval: Optional[str] = None,
         devices: Optional[Union[str, List[str]]] = None,
         pooling_method: Optional[str] = None,
         trust_remote_code: Optional[bool] = None,
         query_instruction_format: Optional[str] = None,
+        truncate_dim: Optional[int] = None,
         **kwargs,
     ):
         """
@@ -102,10 +104,12 @@ class FlagAutoModel:
             model_name_or_path,
             normalize_embeddings=normalize_embeddings,
             use_fp16=use_fp16,
+            use_bf16=use_bf16,
             query_instruction_for_retrieval=query_instruction_for_retrieval,
             query_instruction_format=query_instruction_format,
             devices=devices,
             pooling_method=pooling_method,
             trust_remote_code=trust_remote_code,
+            truncate_dim=truncate_dim,
             **kwargs,
         )

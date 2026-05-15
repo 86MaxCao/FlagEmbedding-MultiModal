@@ -52,6 +52,7 @@ class M3Embedder(AbsEmbedder):
         model_name_or_path: str,
         normalize_embeddings: bool = True,
         use_fp16: bool = True,
+        use_bf16: bool = False,
         query_instruction_for_retrieval: Optional[str] = None,
         query_instruction_format: str = "{}{}", # specify the format of query_instruction_for_retrieval
         devices: Optional[Union[str, List[str]]] = None, # specify devices, such as "cuda:0" or ["cuda:0", "cuda:1"]
@@ -67,12 +68,14 @@ class M3Embedder(AbsEmbedder):
         return_dense: bool = True,
         return_sparse: bool = False,
         return_colbert_vecs: bool = False,
+        truncate_dim: Optional[int] = None,
         **kwargs: Any,
     ):
         super().__init__(
             model_name_or_path,
             normalize_embeddings=normalize_embeddings,
             use_fp16=use_fp16,
+            use_bf16=use_bf16,
             query_instruction_for_retrieval=query_instruction_for_retrieval,
             query_instruction_format=query_instruction_format,
             devices=devices,
@@ -82,6 +85,7 @@ class M3Embedder(AbsEmbedder):
             return_dense=return_dense,
             return_sparse=return_sparse,
             return_colbert_vecs=return_colbert_vecs,
+            truncate_dim=truncate_dim,
             **kwargs
         )
         self.pooling_method = pooling_method
@@ -96,7 +100,8 @@ class M3Embedder(AbsEmbedder):
                 model_name_or_path,
                 trust_remote_code=trust_remote_code,
                 colbert_dim=colbert_dim,
-                cache_dir=cache_dir
+                cache_dir=cache_dir,
+                torch_dtype=self.get_model_torch_dtype(),
             ),
             tokenizer=self.tokenizer,
             sentence_pooling_method=pooling_method,
@@ -334,8 +339,8 @@ class M3Embedder(AbsEmbedder):
         if device is None:
             device = self.target_devices[0]
 
-        if device == "cpu": self.use_fp16 = False
-        if self.use_fp16: self.model.half()
+        if device == "cpu":
+            self.model.float()
 
         self.model.to(device)
         self.model.eval()
@@ -424,27 +429,28 @@ class M3Embedder(AbsEmbedder):
                 inputs_batch,
                 return_dense=return_dense,
                 return_sparse=return_sparse,
-                return_colbert_vecs=return_colbert_vecs
+                return_colbert_vecs=return_colbert_vecs,
+                truncate_dim=self.truncate_dim
             )
 
             if return_dense:
-                all_dense_embeddings.append(outputs['dense_vecs'].cpu().numpy())
+                all_dense_embeddings.append(self._convert_to_numpy(outputs['dense_vecs'], device=device))
 
             if return_sparse:
                 token_weights = outputs['sparse_vecs'].squeeze(-1)
                 all_lexical_weights.extend(
                     list(map(
                         _process_token_weights, 
-                        token_weights.cpu().numpy(),
-                        inputs_batch['input_ids'].cpu().numpy().tolist()
+                        self._convert_to_numpy(token_weights, device=device),
+                        self._convert_to_numpy(inputs_batch['input_ids'], device=device).tolist()
                 )))
 
             if return_colbert_vecs:
                 all_colbert_vecs.extend(
                     list(map(
                         _process_colbert_vecs,
-                        outputs['colbert_vecs'].cpu().numpy(),
-                        inputs_batch['attention_mask'].cpu().numpy()
+                        self._convert_to_numpy(outputs['colbert_vecs'], device=device),
+                        self._convert_to_numpy(inputs_batch['attention_mask'], device=device)
                 )))
 
         if return_dense:
@@ -630,8 +636,8 @@ class M3Embedder(AbsEmbedder):
         if device is None:
             device = self.target_devices[0]
 
-        if device == "cpu": self.use_fp16 = False
-        if self.use_fp16: self.model.half()
+        if device == "cpu":
+            self.model.float()
 
         self.model.to(device)
         self.model.eval()
@@ -697,19 +703,28 @@ class M3Embedder(AbsEmbedder):
                 inx, inx].float(), colbert_scores[inx, inx].float()
 
             all_scores['colbert'].extend(
-                colbert_scores.cpu().numpy().tolist()
+                self._convert_to_numpy(colbert_scores, device=device).tolist()
             )
             all_scores['sparse'].extend(
-                sparse_scores.cpu().numpy().tolist()
+                self._convert_to_numpy(sparse_scores, device=device).tolist()
             )
             all_scores['dense'].extend(
-                dense_scores.cpu().numpy().tolist()
+                self._convert_to_numpy(dense_scores, device=device).tolist()
             )
             all_scores['sparse+dense'].extend(
-                ((sparse_scores * weights_for_different_modes[1] + dense_scores * weights_for_different_modes[0])/(weights_for_different_modes[1]+weights_for_different_modes[0])).cpu().numpy().tolist()
+                self._convert_to_numpy(
+                    (sparse_scores * weights_for_different_modes[1] + dense_scores * weights_for_different_modes[0])
+                    / (weights_for_different_modes[1] + weights_for_different_modes[0]),
+                    device=device,
+                ).tolist()
             )
             all_scores['colbert+sparse+dense'].extend(
-                ((colbert_scores * weights_for_different_modes[2] + sparse_scores * weights_for_different_modes[1] + dense_scores * weights_for_different_modes[0])/weight_sum).cpu().numpy().tolist()
+                self._convert_to_numpy(
+                    (colbert_scores * weights_for_different_modes[2]
+                     + sparse_scores * weights_for_different_modes[1]
+                     + dense_scores * weights_for_different_modes[0]) / weight_sum,
+                    device=device,
+                ).tolist()
             )
 
         if one_input_pair:

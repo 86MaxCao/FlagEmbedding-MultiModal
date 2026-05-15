@@ -41,6 +41,8 @@ class AbsEmbedder(ABC):
         passage_max_length (int, optional): Maximum length for passage. Defaults to :data:`512`.
         convert_to_numpy (bool, optional): If True, the output embedding will be a Numpy array. Otherwise, it will be a Torch Tensor. 
             Defaults to :data:`True`.
+        truncate_dim (Optional[int], optional): The dimension to truncate the output embeddings to. Useful for Matryoshka
+            Representation Learning models. If None, no truncation is performed. Defaults to :data:`None`.
         kwargs (Dict[Any], optional): Additional parameters for HuggingFace Transformers config or children classes.
     """
 
@@ -49,6 +51,7 @@ class AbsEmbedder(ABC):
         model_name_or_path: str,
         normalize_embeddings: bool = True,
         use_fp16: bool = True,
+        use_bf16: bool = False,
         query_instruction_for_retrieval: Optional[str] = None,
         query_instruction_format: str = "{}{}",  # specify the format of query_instruction_for_retrieval
         devices: Optional[Union[str, int, List[str], List[int]]] = None,
@@ -57,11 +60,13 @@ class AbsEmbedder(ABC):
         query_max_length: int = 512,
         passage_max_length: int = 512,
         convert_to_numpy: bool = True,
+        truncate_dim: Optional[int] = None,
         **kwargs: Any,
     ):
         self.model_name_or_path = model_name_or_path
         self.normalize_embeddings = normalize_embeddings
         self.use_fp16 = use_fp16
+        self.use_bf16 = use_bf16
         self.query_instruction_for_retrieval = query_instruction_for_retrieval
         self.query_instruction_format = query_instruction_format
         self.target_devices = self.get_target_devices(devices)
@@ -70,6 +75,7 @@ class AbsEmbedder(ABC):
         self.query_max_length = query_max_length
         self.passage_max_length = passage_max_length
         self.convert_to_numpy = convert_to_numpy
+        self.truncate_dim = truncate_dim
 
         for k in kwargs:
             setattr(self, k, kwargs[k])
@@ -80,6 +86,13 @@ class AbsEmbedder(ABC):
         self.tokenizer = None
         self.model = None
         self.pool = None
+
+    def get_model_torch_dtype(self) -> torch.dtype:
+        if self.use_bf16:
+            return torch.bfloat16
+        if self.use_fp16:
+            return torch.float16
+        return torch.float32
 
     def stop_self_pool(self):
         if self.pool is not None:
@@ -441,3 +454,38 @@ class AbsEmbedder(ABC):
             return np.concatenate(results_list, axis=0)
         else:
             raise NotImplementedError("Unsupported type for results_list")
+
+    def _convert_to_numpy(self, embeddings: torch.Tensor, device: Optional[str] = None) -> np.ndarray:
+        """Convert tensor embeddings to numpy with bf16-safe handling.
+
+        NumPy does not support bfloat16, so we upcast to float32 only when
+        bf16 inference is enabled on non-CPU devices.
+
+        Args:
+            embeddings (torch.Tensor): Embedding tensor.
+            device (Optional[str], optional): Inference device string. Defaults to ``None``.
+
+        Returns:
+            np.ndarray: Embeddings in numpy format.
+        """
+        if device != "cpu" and self.use_bf16 and embeddings.dtype == torch.bfloat16:
+            embeddings = embeddings.float()
+        return embeddings.cpu().numpy()
+
+    def _truncate_embeddings(self, embeddings: torch.Tensor) -> torch.Tensor:
+        """Truncate the embedding vectors to the specified dimension.
+
+        This is useful for Matryoshka Representation Learning models, where
+        embeddings can be truncated to a smaller dimension without significant
+        loss of quality.
+
+        Args:
+            embeddings (torch.Tensor): The embedding tensor to truncate.
+
+        Returns:
+            torch.Tensor: The truncated embedding tensor. If :attr:`truncate_dim` is None,
+                the original embeddings are returned unchanged.
+        """
+        if self.truncate_dim is not None:
+            embeddings = embeddings[..., :self.truncate_dim]
+        return embeddings

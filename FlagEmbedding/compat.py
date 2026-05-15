@@ -102,6 +102,18 @@ def register_qwen3_vl_for_sequence_classification():
         pass
 
 
+def patch_bge_vl_language_model(model):
+    """Patch BGE-VL model to restore language_model attribute for transformers 5.x.
+
+    In transformers 5.x, LlavaNextForConditionalGeneration no longer exposes
+    self.language_model directly; it lives under self.model.language_model.
+    The BGE-VL custom model code calls self.language_model in forward().
+    """
+    if not hasattr(model, 'language_model') and hasattr(model, 'model'):
+        if hasattr(model.model, 'language_model'):
+            model.language_model = model.model.language_model
+
+
 # --- Convenience aggregators ---
 
 def apply_jina_reranker_patches():

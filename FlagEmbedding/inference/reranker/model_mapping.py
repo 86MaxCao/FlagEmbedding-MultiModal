@@ -63,23 +63,24 @@ AUTO_RERANKER_MAPPING = OrderedDict([
         "bge-reranker-v2.5-gemma2-lightweight",
         RerankerConfig(LightWeightFlagLLMReranker)
     ),
-    # others
+    # ============================== Others ==============================
     (
-        "jina-reranker-v2-base-multilingual",
+        "jinaai/jina-reranker-v2-base-multilingual",
         RerankerConfig(FlagReranker)
     ),
     (
-        "gte-multilingual-reranker-base",
+        "Alibaba-NLP/gte-multilingual-reranker-base",
         RerankerConfig(FlagReranker)
     ),
     (
-        "bce-reranker-base_v1",
+        "maidalun1020/bce-reranker-base_v1",
         RerankerConfig(FlagReranker)
     ),
     (
-        "jina-reranker-v1-turbo-en",
+        "jinaai/jina-reranker-v1-turbo-en",
         RerankerConfig(FlagReranker)
     ),
+    # ============================== Multimodal ==============================
     (
         "jina-reranker-m0",
         RerankerConfig(MultimodalReranker, trust_remote_code=True)
@@ -92,7 +93,7 @@ AUTO_RERANKER_MAPPING = OrderedDict([
         "Qwen3-VL-Reranker-8B",
         RerankerConfig(Qwen3VLReranker, trust_remote_code=True)
     ),
-    # Qwen3 text rerankers
+    # ============================== Qwen3 Text Rerankers ==============================
     (
         "Qwen3-Reranker-0.6B",
         RerankerConfig(Qwen3Reranker, trust_remote_code=True)

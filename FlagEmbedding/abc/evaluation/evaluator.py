@@ -10,7 +10,7 @@ from typing import Dict, Optional, List, Union
 
 from .data_loader import AbsEvalDataLoader
 from .searcher import EvalRetriever, EvalReranker
-from .utils import evaluate_metrics, evaluate_mrr
+from .utils import evaluate_metrics, evaluate_mrr, evaluate_recall_cap
 
 logger = logging.getLogger(__name__)
 
@@ -340,12 +340,18 @@ class AbsEvaluator:
             results=search_results,
             k_values=k_values,
         )
+        recall_cap = evaluate_recall_cap(
+            qrels=qrels,
+            results=search_results,
+            k_values=k_values,
+        )
         scores = {
             **{f"ndcg_at_{k.split('@')[1]}": v for (k, v) in ndcg.items()},
             **{f"map_at_{k.split('@')[1]}": v for (k, v) in _map.items()},
             **{f"recall_at_{k.split('@')[1]}": v for (k, v) in recall.items()},
             **{f"precision_at_{k.split('@')[1]}": v for (k, v) in precision.items()},
             **{f"mrr_at_{k.split('@')[1]}": v for (k, v) in mrr.items()},
+            **{f"recall_cap_at_{k.split('@')[1]}": v for (k, v) in recall_cap.items()},
         }
         return scores
 

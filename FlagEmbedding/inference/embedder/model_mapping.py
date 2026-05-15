@@ -4,13 +4,7 @@ from dataclasses import dataclass
 from collections import OrderedDict
 
 from FlagEmbedding.abc.inference import AbsEmbedder
-from FlagEmbedding.inference.embedder import (
-    FlagModel,
-    BGEM3FlagModel,
-    FlagLLMModel,
-    FlagICLModel,
-    FlagMLLMModel,
-)
+from FlagEmbedding.inference.embedder import FlagModel, BGEM3FlagModel, FlagLLMModel, FlagICLModel, FlagPseudoMoEModel, FlagMLLMModel
 from FlagEmbedding.inference.embedder.qwen3_vl_embedding import Qwen3VLEmbeddingModel
 
 
@@ -19,6 +13,7 @@ class EmbedderModelClass(Enum):
     ENCODER_ONLY_M3 = "encoder-only-m3"
     DECODER_ONLY_BASE = "decoder-only-base"
     DECODER_ONLY_ICL = "decoder-only-icl"
+    DECODER_ONLY_PSEUDO_MOE = "decoder-only-pseudo_moe"
     MULTIMODAL_MLLM = "multimodal-mllm"
     QWEN3_VL_EMBEDDING = "qwen3-vl-embedding"
 
@@ -28,6 +23,7 @@ EMBEDDER_CLASS_MAPPING = OrderedDict([
     (EmbedderModelClass.ENCODER_ONLY_M3, BGEM3FlagModel),
     (EmbedderModelClass.DECODER_ONLY_BASE, FlagLLMModel),
     (EmbedderModelClass.DECODER_ONLY_ICL, FlagICLModel),
+    (EmbedderModelClass.DECODER_ONLY_PSEUDO_MOE, FlagPseudoMoEModel),
     (EmbedderModelClass.MULTIMODAL_MLLM, FlagMLLMModel),
     (EmbedderModelClass.QWEN3_VL_EMBEDDING, Qwen3VLEmbeddingModel),
 ])
@@ -127,7 +123,7 @@ BGE_MAPPING = OrderedDict([
     ),
 ])
 
-# Qwen3-VL multimodal embedding (Sentence-Transformers; HF: Qwen/Qwen3-VL-Embedding-*)
+# Qwen3-VL multimodal embedding (HF: Qwen/Qwen3-VL-Embedding-*)
 QWEN3_VL_EMBEDDING_MAPPING = OrderedDict([
     (
         "Qwen3-VL-Embedding-2B",
@@ -297,9 +293,8 @@ AUTO_EMBEDDER_MAPPING.update(BCE_MAPPING)
 
 # TODO: Add more models, such as Jina, Stella_v5, NV-Embed, etc.
 
-def support_native_bge_model_list() -> List[str]:
+def support_native_bge_model_list()->List[str]:
     return list(BGE_MAPPING.keys())
 
-
-def support_model_list() -> List[str]:
+def support_model_list()->List[str]:
     return list(AUTO_EMBEDDER_MAPPING.keys())

@@ -60,6 +60,7 @@ class BaseLLMEmbedder(AbsEmbedder):
         model_name_or_path: str,
         normalize_embeddings: bool = True,
         use_fp16: bool = True,
+        use_bf16: bool = False,
         query_instruction_for_retrieval: Optional[str] = None,
         query_instruction_format: str = "Instruct: {}\nQuery: {}", # specify the format of query_instruction_for_retrieval
         devices: Optional[Union[str, List[str]]] = None, # specify devices, such as "cuda:0" or ["cuda:0", "cuda:1"]
@@ -71,12 +72,14 @@ class BaseLLMEmbedder(AbsEmbedder):
         query_max_length: int = 512,
         passage_max_length: int = 512,
         convert_to_numpy: bool = True,
+        truncate_dim: Optional[int] = None,
         **kwargs: Any,
     ):
         super().__init__(
             model_name_or_path,
             normalize_embeddings=normalize_embeddings,
             use_fp16=use_fp16,
+            use_bf16=use_bf16,
             query_instruction_for_retrieval=query_instruction_for_retrieval,
             query_instruction_format=query_instruction_format,
             devices=devices,
@@ -84,6 +87,7 @@ class BaseLLMEmbedder(AbsEmbedder):
             query_max_length=query_max_length,
             passage_max_length=passage_max_length,
             convert_to_numpy=convert_to_numpy,
+            truncate_dim=truncate_dim,
             **kwargs
         )
 
@@ -95,7 +99,8 @@ class BaseLLMEmbedder(AbsEmbedder):
         self.model = AutoModel.from_pretrained(
             model_name_or_path,
             trust_remote_code=trust_remote_code,
-            cache_dir=cache_dir
+            cache_dir=cache_dir,
+            dtype=self.get_model_torch_dtype(),
         )
 
         if self.kwargs.get("pooling_method", "last_token") != "last_token":
@@ -211,8 +216,8 @@ class BaseLLMEmbedder(AbsEmbedder):
         if device is None:
             device = self.target_devices[0]
 
-        if device == "cpu": self.use_fp16 = False
-        if self.use_fp16: self.model.half()
+        if device == "cpu":
+            self.model.float()
 
         self.model.to(device)
         self.model.eval()
@@ -273,12 +278,13 @@ class BaseLLMEmbedder(AbsEmbedder):
             ).to(device)
             last_hidden_state = self.model(**inputs_batch, return_dict=True).last_hidden_state
             embeddings = last_token_pool(last_hidden_state, inputs_batch['attention_mask'])
+            embeddings = self._truncate_embeddings(embeddings)
             if self.normalize_embeddings:
                 embeddings = torch.nn.functional.normalize(embeddings, dim=-1)
             embeddings = cast(torch.Tensor, embeddings)
 
             if convert_to_numpy:
-                embeddings = embeddings.cpu().numpy()
+                embeddings = self._convert_to_numpy(embeddings, device=device)
             all_embeddings.append(embeddings)
 
         if convert_to_numpy:

@@ -1,21 +1,22 @@
 export WANDB_MODE=disabled
 
-# Training data - update with your MMEB-train path
-train_data="TIGER-Lab/MMEB-train"
+# Training data - update with your data path
+train_data="../example_data/multimodal/examples.jsonl"
 
-# set epochs and batch size
+# Training parameters
 num_train_epochs=3
-per_device_train_batch_size=4
+per_device_train_batch_size=2
+train_group_size=3
 
-# set num_gpus
-num_gpus=4
+# Set num_gpus
+num_gpus=2
 
 if [ -z "$HF_HUB_CACHE" ]; then
     export HF_HUB_CACHE="$HOME/.cache/huggingface/hub"
 fi
 
 model_args="\
-    --model_name_or_path BAAI/BGE-VL-MLLM-S1 \
+    --model_name_or_path Qwen/Qwen3-VL-Embedding-2B \
     --cache_dir $HF_HUB_CACHE \
     --use_lora True \
     --lora_rank 32 \
@@ -28,7 +29,7 @@ model_args="\
 data_args="\
     --train_data $train_data \
     --cache_path ~/.cache \
-    --train_group_size 8 \
+    --train_group_size $train_group_size \
     --query_max_len 512 \
     --passage_max_len 512 \
     --pad_to_multiple_of 8 \
@@ -36,7 +37,7 @@ data_args="\
 "
 
 training_args="\
-    --output_dir ./output_multimodal_bge_vl_mllm_s1 \
+    --output_dir ./output_multimodal_qwen3_vl_embedding \
     --learning_rate 1e-4 \
     --bf16 \
     --num_train_epochs $num_train_epochs \
@@ -44,18 +45,18 @@ training_args="\
     --dataloader_drop_last True \
     --warmup_ratio 0.1 \
     --gradient_checkpointing \
-    --deepspeed ../../ds_stage1.json \
-    --logging_steps 10 \
+    --deepspeed ../../ds_stage0.json \
+    --logging_steps 1 \
     --save_steps 500 \
     --negatives_cross_device \
     --temperature 0.02 \
     --sentence_pooling_method last_token \
     --normalize_embeddings True \
-    --kd_loss_type m3_kd_loss \
+    --kd_loss_type kl_div \
 "
 
 cmd="torchrun --nproc_per_node $num_gpus \
-    -m FlagEmbedding.finetune.embedder.multimodal.base \
+    -m FlagEmbedding.finetune.embedder.multimodal.qwen3_vl \
     $model_args \
     $data_args \
     $training_args \
@@ -63,4 +64,3 @@ cmd="torchrun --nproc_per_node $num_gpus \
 
 echo $cmd
 eval $cmd
-

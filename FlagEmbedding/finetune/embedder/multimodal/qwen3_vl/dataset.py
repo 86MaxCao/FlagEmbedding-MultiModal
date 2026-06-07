@@ -210,11 +210,20 @@ class Qwen3VLEmbedderCollator:
             "role": "user",
             "content": content
         })
-        messages.append({
-            "role": "assistant",
-            "content": ""
-        })
         return messages
+
+    def _apply_template(self, messages):
+        """Apply chat template and append <|endoftext|> as the pooling target.
+
+        Qwen3-VL-Embedding uses last-token pooling. The official approach
+        (ms-swift Qwen3VLEmbTemplate) appends <|endoftext|> so the final
+        token's hidden state serves as the sentence embedding.
+        """
+        text = self.processor.apply_chat_template(
+            messages, tokenize=False, add_generation_prompt=False
+        )
+        text += "<|endoftext|>"
+        return text
 
     def _process_batch(self, texts, images, max_len, is_query=False):
         """Process a batch of text+image pairs."""
@@ -235,9 +244,7 @@ class Qwen3VLEmbedderCollator:
             processed = []
             for i, messages in enumerate(all_messages):
                 img = loaded_images[i]
-                text_input = self.processor.apply_chat_template(
-                    messages, tokenize=False, add_generation_prompt=True
-                )
+                text_input = self._apply_template(messages)
                 if img is not None:
                     inputs = self.processor(
                         text=[text_input], images=[img],
@@ -266,9 +273,7 @@ class Qwen3VLEmbedderCollator:
             # Use tokenizer directly for text-only data
             text_inputs = []
             for messages in all_messages:
-                text_input = self.processor.apply_chat_template(
-                    messages, tokenize=False, add_generation_prompt=True
-                )
+                text_input = self._apply_template(messages)
                 text_inputs.append(text_input)
 
             batch = self.tokenizer(

@@ -7,7 +7,7 @@ import os
 import pytest
 import numpy as np
 
-from tests.conftest import HF_CACHE_DIR
+from conftest import HF_CACHE_DIR
 
 pytestmark = pytest.mark.multi_gpu
 

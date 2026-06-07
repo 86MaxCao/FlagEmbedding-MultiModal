@@ -15,7 +15,11 @@ from .arguments import MultimodalEmbedderModelArguments
 from .trainer import MultimodalEmbedderTrainer
 from .modeling import BiMultimodalEmbedderModel
 from .dataset import MultimodalEmbedderTrainDataset, MultimodalEmbedderCollator
-from .load_model import get_model, save_merged_model
+from .load_model import get_model, save_merged_model, _is_gme_model
+from FlagEmbedding.inference.embedder.multimodal.gme_qwen2vl import (
+    _bypass_gme_version_check,
+    _restore_require_version,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -45,14 +49,21 @@ class MultimodalEmbedderRunner(AbsEmbedderRunner):
         Returns:
             Tuple[PreTrainedTokenizer, AbsEmbedderModel]: Tokenizer and model instances.
         """
-        tokenizer = AutoTokenizer.from_pretrained(
-            self.model_args.tokenizer_name if self.model_args.tokenizer_name else self.model_args.model_name_or_path,
-            token=self.model_args.token,
-            cache_dir=self.model_args.cache_dir,
-            use_fast=self.model_args.use_fast_tokenizer,
-            add_eos_token=True,
-            trust_remote_code=self.model_args.trust_remote_code,
-        )
+        is_gme = _is_gme_model(self.model_args.model_name_or_path)
+        orig_rv = _bypass_gme_version_check() if is_gme else None
+
+        try:
+            tokenizer = AutoTokenizer.from_pretrained(
+                self.model_args.tokenizer_name if self.model_args.tokenizer_name else self.model_args.model_name_or_path,
+                token=self.model_args.token,
+                cache_dir=self.model_args.cache_dir,
+                use_fast=self.model_args.use_fast_tokenizer,
+                add_eos_token=True,
+                trust_remote_code=self.model_args.trust_remote_code,
+            )
+        finally:
+            if orig_rv is not None:
+                _restore_require_version(orig_rv)
 
         if tokenizer.pad_token is None:
             if tokenizer.unk_token is not None:
@@ -72,17 +83,22 @@ class MultimodalEmbedderRunner(AbsEmbedderRunner):
                 logger.info(f"Add {add_num} special tokens to the tokenizer. Special tokens: {self.model_args.additional_special_tokens}")
             else:
                 logger.warning(f"Special tokens {self.model_args.additional_special_tokens} already exists in the tokenizer.")
-        
+
         base_model = get_model(self.model_args, self.training_args.output_dir, resize, len(tokenizer))
 
         num_labels = 1
-        config = AutoConfig.from_pretrained(
-            self.model_args.config_name if self.model_args.config_name else self.model_args.model_name_or_path,
-            num_labels=num_labels,
-            cache_dir=self.model_args.cache_dir,
-            token=self.model_args.token,
-            trust_remote_code=self.model_args.trust_remote_code,
-        )
+        orig_rv2 = _bypass_gme_version_check() if is_gme else None
+        try:
+            config = AutoConfig.from_pretrained(
+                self.model_args.config_name if self.model_args.config_name else self.model_args.model_name_or_path,
+                num_labels=num_labels,
+                cache_dir=self.model_args.cache_dir,
+                token=self.model_args.token,
+                trust_remote_code=self.model_args.trust_remote_code,
+            )
+        finally:
+            if orig_rv2 is not None:
+                _restore_require_version(orig_rv2)
         logger.info('Config: %s', config)
 
         model = BiMultimodalEmbedderModel(
@@ -106,12 +122,13 @@ class MultimodalEmbedderRunner(AbsEmbedderRunner):
                     v.requires_grad = False
         return tokenizer, model
 
-    def load_dataset(self):
+    def load_train_dataset(self):
         """Load the training dataset."""
-        self.train_dataset = MultimodalEmbedderTrainDataset(
+        train_dataset = MultimodalEmbedderTrainDataset(
             args=self.data_args,
             tokenizer=self.tokenizer
         )
+        return train_dataset
 
     def load_data_collator(self):
         """Load the data collator."""
@@ -122,6 +139,7 @@ class MultimodalEmbedderRunner(AbsEmbedderRunner):
             model=self.model.model,  # Pass the base model with data_process method
             pad_to_multiple_of=self.data_args.pad_to_multiple_of,
         )
+        return self.data_collator
 
     def load_trainer(self) -> MultimodalEmbedderTrainer:
         """Load the trainer.
@@ -134,7 +152,7 @@ class MultimodalEmbedderRunner(AbsEmbedderRunner):
             args=self.training_args,
             train_dataset=self.train_dataset,
             data_collator=self.data_collator,
-            tokenizer=self.tokenizer
+            processing_class=self.tokenizer,
         )
         if self.data_args.same_dataset_within_batch:
             trainer.add_callback(EmbedderTrainerCallbackForDataRefresh(self.train_dataset))

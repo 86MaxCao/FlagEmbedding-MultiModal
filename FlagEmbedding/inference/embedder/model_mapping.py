@@ -4,7 +4,7 @@ from dataclasses import dataclass
 from collections import OrderedDict
 
 from FlagEmbedding.abc.inference import AbsEmbedder
-from FlagEmbedding.inference.embedder import FlagModel, BGEM3FlagModel, FlagLLMModel, FlagICLModel, FlagPseudoMoEModel, FlagMLLMModel
+from FlagEmbedding.inference.embedder import FlagModel, BGEM3FlagModel, FlagLLMModel, FlagICLModel, FlagPseudoMoEModel, FlagMLLMModel, GmeQwen2VLEmbedder, JinaEmbeddingsV4Embedder
 from FlagEmbedding.inference.embedder.qwen3_vl_embedding import Qwen3VLEmbeddingModel
 
 
@@ -15,6 +15,8 @@ class EmbedderModelClass(Enum):
     DECODER_ONLY_ICL = "decoder-only-icl"
     DECODER_ONLY_PSEUDO_MOE = "decoder-only-pseudo_moe"
     MULTIMODAL_MLLM = "multimodal-mllm"
+    GME_QWEN2VL = "gme-qwen2vl"
+    JINA_EMBEDDINGS_V4 = "jina-embeddings-v4"
     QWEN3_VL_EMBEDDING = "qwen3-vl-embedding"
 
 
@@ -25,6 +27,8 @@ EMBEDDER_CLASS_MAPPING = OrderedDict([
     (EmbedderModelClass.DECODER_ONLY_ICL, FlagICLModel),
     (EmbedderModelClass.DECODER_ONLY_PSEUDO_MOE, FlagPseudoMoEModel),
     (EmbedderModelClass.MULTIMODAL_MLLM, FlagMLLMModel),
+    (EmbedderModelClass.GME_QWEN2VL, GmeQwen2VLEmbedder),
+    (EmbedderModelClass.JINA_EMBEDDINGS_V4, JinaEmbeddingsV4Embedder),
     (EmbedderModelClass.QWEN3_VL_EMBEDDING, Qwen3VLEmbeddingModel),
 ])
 
@@ -120,6 +124,14 @@ BGE_MAPPING = OrderedDict([
     (
         "BGE-VL-MLLM-S2",
         EmbedderConfig(FlagMLLMModel, PoolingMethod.LAST_TOKEN, trust_remote_code=True)
+    ),
+    (
+        "gme-Qwen2-VL-2B-Instruct",
+        EmbedderConfig(GmeQwen2VLEmbedder, PoolingMethod.LAST_TOKEN, trust_remote_code=True)
+    ),
+    (
+        "gme-Qwen2-VL-7B-Instruct",
+        EmbedderConfig(GmeQwen2VLEmbedder, PoolingMethod.LAST_TOKEN, trust_remote_code=True)
     ),
 ])
 
@@ -280,11 +292,20 @@ BCE_MAPPING = OrderedDict([
     ),
 ])
 
+# Jina multimodal embedding models
+JINA_EMBEDDING_MAPPING = OrderedDict([
+    (
+        "jina-embeddings-v4",
+        EmbedderConfig(JinaEmbeddingsV4Embedder, PoolingMethod.MEAN, trust_remote_code=True),
+    ),
+])
+
 # Combine all mappings
 AUTO_EMBEDDER_MAPPING = OrderedDict()
 AUTO_EMBEDDER_MAPPING.update(BGE_MAPPING)
 AUTO_EMBEDDER_MAPPING.update(QWEN3_VL_EMBEDDING_MAPPING)
 AUTO_EMBEDDER_MAPPING.update(QWEN3_EMBEDDING_MAPPING)
+AUTO_EMBEDDER_MAPPING.update(JINA_EMBEDDING_MAPPING)
 AUTO_EMBEDDER_MAPPING.update(E5_MAPPING)
 AUTO_EMBEDDER_MAPPING.update(GTE_MAPPING)
 AUTO_EMBEDDER_MAPPING.update(SFR_MAPPING)

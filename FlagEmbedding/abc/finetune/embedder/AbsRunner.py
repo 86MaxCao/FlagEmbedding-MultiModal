@@ -43,7 +43,7 @@ class AbsEmbedderRunner(ABC):
             os.path.exists(training_args.output_dir)
             and os.listdir(training_args.output_dir)
             and training_args.do_train
-            and not training_args.overwrite_output_dir
+            and not getattr(training_args, 'overwrite_output_dir', True)
         ):
             raise ValueError(
                 f"Output directory ({training_args.output_dir}) already exists and is not empty. Use --overwrite_output_dir to overcome."

@@ -69,6 +69,15 @@ class AbsEmbedderModel(ABC, nn.Module):
         if self.use_mrl and len(self.mrl_dims) == 0:
             raise ValueError("mrl_dims should be provided when use_mrl is True")
 
+    def gradient_checkpointing_enable(self, **kwargs):
+        self.model.gradient_checkpointing_enable(**kwargs)
+
+    def gradient_checkpointing_disable(self):
+        self.model.gradient_checkpointing_disable()
+
+    def enable_input_require_grads(self, **kwargs):
+        self.model.enable_input_require_grads(**kwargs)
+
     @abstractmethod
     def encode(self, features):
         """Abstract method encode and get the embedding.

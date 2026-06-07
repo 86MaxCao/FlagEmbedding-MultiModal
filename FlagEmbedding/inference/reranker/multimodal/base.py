@@ -257,6 +257,15 @@ class MultimodalReranker(AbsReranker):
                 dim=1,
             )
 
+            if "mm_token_type_ids" in batch:
+                batch["mm_token_type_ids"] = torch.cat(
+                    [
+                        batch["mm_token_type_ids"],
+                        torch.zeros((batch_size_current, 1), dtype=batch["mm_token_type_ids"].dtype, device=batch["mm_token_type_ids"].device),
+                    ],
+                    dim=1,
+                )
+
             # Move to device
             batch = {k: v.to(device) if isinstance(v, torch.Tensor) else v for k, v in batch.items()}
 

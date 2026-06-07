@@ -9,7 +9,229 @@
 与 [FlagOpen](https://github.com/FlagOpen) **无关联**。  
 所有原始代码遵循 Apache 2.0 协议；详见 [LICENSE](LICENSE)。
 
+---
 
+## 多模态向量与重排
+
+本 fork 为 [FlagEmbedding](https://github.com/FlagOpen/FlagEmbedding) 扩展了多模态向量和重排能力，提供统一的推理与 LoRA 微调 API，支持多种视觉语言模型，完全兼容 **transformers 5.x**（5.8.0+）。
+
+### 支持模型
+
+#### 多模态向量模型
+
+| 模型 | 模态 | 池化 | 推理 | 微调 | 描述 |
+|:------|:----:|:----:|:----:|:----:|:-----|
+| [Alibaba-NLP/gme-Qwen2-VL-2B-Instruct](https://huggingface.co/Alibaba-NLP/gme-Qwen2-VL-2B-Instruct) | 图像+文本 | last_token | Yes | Yes | 基于 Qwen2-VL 的 GME 多模态向量模型（2B） |
+| [jinaai/jina-embeddings-v4](https://huggingface.co/jinaai/jina-embeddings-v4) | 图像+文本 | last_token | Yes | Yes | Jina 多模态向量模型，内置多任务 LoRA 适配器 |
+| [BAAI/BGE-VL-MLLM-S1](https://huggingface.co/BAAI/BGE-VL-MLLM-S1) | 图像+文本 | last_token | Yes | Yes | BGE-VL 系列多模态向量模型 |
+| [BAAI/BGE-VL-MLLM-S2](https://huggingface.co/BAAI/BGE-VL-MLLM-S2) | 图像+文本 | last_token | Yes | Yes | BGE-VL 系列多模态向量模型 |
+| [Qwen/Qwen3-VL-Embedding-2B](https://huggingface.co/Qwen/Qwen3-VL-Embedding-2B) | 图像+文本 | last_token | Yes | Yes | Qwen3-VL 多模态向量模型（2B） |
+| [Qwen/Qwen3-VL-Embedding-8B](https://huggingface.co/Qwen/Qwen3-VL-Embedding-8B) | 图像+文本 | last_token | Yes | Yes | Qwen3-VL 多模态向量模型（8B） |
+
+#### 多模态重排模型
+
+| 模型 | 模态 | 推理 | 微调 | 损失 | 描述 |
+|:------|:----:|:----:|:----:|:----:|:-----|
+| [jinaai/jina-reranker-m0](https://huggingface.co/jinaai/jina-reranker-m0) | 图像+文本 | Yes | Yes | Pairwise / Listwise | 基于 Qwen2-VL 的多模态重排模型 |
+| [Qwen/Qwen3-VL-Reranker-2B](https://huggingface.co/Qwen/Qwen3-VL-Reranker-2B) | 图像+文本 | Yes | Yes | Pairwise / Listwise | Qwen3-VL 多模态重排模型（2B） |
+| [Qwen/Qwen3-VL-Reranker-8B](https://huggingface.co/Qwen/Qwen3-VL-Reranker-8B) | 图像+文本 | Yes | Yes | Pairwise / Listwise | Qwen3-VL 多模态重排模型（8B） |
+
+#### 文本向量模型
+
+| 模型 | 语言 | 池化 | 推理 | 微调 | 描述 |
+|:------|:----:|:----:|:----:|:----:|:-----|
+| [Qwen/Qwen3-Embedding-0.6B](https://huggingface.co/Qwen/Qwen3-Embedding-0.6B) | Multilingual | last_token | Yes | Yes | Qwen3 文本向量模型（0.6B） |
+| [Qwen/Qwen3-Embedding-4B](https://huggingface.co/Qwen/Qwen3-Embedding-4B) | Multilingual | last_token | Yes | Yes | Qwen3 文本向量模型（4B） |
+| [Qwen/Qwen3-Embedding-8B](https://huggingface.co/Qwen/Qwen3-Embedding-8B) | Multilingual | last_token | Yes | Yes | Qwen3 文本向量模型（8B） |
+
+#### 文本重排模型
+
+| 模型 | 语言 | 推理 | 微调 | 损失 | 描述 |
+|:------|:----:|:----:|:----:|:----:|:-----|
+| [Qwen/Qwen3-Reranker-0.6B](https://huggingface.co/Qwen/Qwen3-Reranker-0.6B) | Multilingual | Yes | Yes | Pairwise / Listwise | Qwen3 文本重排模型（0.6B） |
+| [Qwen/Qwen3-Reranker-4B](https://huggingface.co/Qwen/Qwen3-Reranker-4B) | Multilingual | Yes | Yes | Pairwise / Listwise | Qwen3 文本重排模型（4B） |
+| [Qwen/Qwen3-Reranker-8B](https://huggingface.co/Qwen/Qwen3-Reranker-8B) | Multilingual | Yes | Yes | Pairwise / Listwise | Qwen3 文本重排模型（8B） |
+
+### 推理
+
+#### 多模态向量模型
+
+```python
+from FlagEmbedding import FlagAutoModel
+
+# GME-Qwen2-VL
+model = FlagAutoModel.from_finetuned(
+    'Alibaba-NLP/gme-Qwen2-VL-2B-Instruct',
+    model_class="gme-qwen2vl",
+    use_fp16=True,
+    devices="cuda:0",
+    trust_remote_code=True,
+)
+
+# jina-embeddings-v4
+model = FlagAutoModel.from_finetuned(
+    'jinaai/jina-embeddings-v4',
+    model_class="jina-embeddings-v4",
+    use_fp16=True,
+    devices="cuda:0",
+    trust_remote_code=True,
+)
+
+# BGE-VL
+model = FlagAutoModel.from_finetuned(
+    'BAAI/BGE-VL-MLLM-S1',
+    model_class="multimodal-mllm",
+    use_fp16=True,
+    devices="cuda:0",
+    trust_remote_code=True,
+)
+```
+
+编码查询和语料（文本、图像或两者混合）：
+
+```python
+# 纯文本
+q_emb = model.encode_queries(queries=["What breed of dog is this?"])
+p_emb = model.encode_corpus(corpus=["A golden retriever in a park."])
+
+# 纯图像
+q_emb = model.encode_queries(images=["query_image.jpg"])
+p_emb = model.encode_corpus(images=["doc_image.jpg"])
+
+# 文本 + 图像
+q_emb = model.encode_queries(
+    queries=["Describe the architecture"],
+    images=["building.jpg"],
+)
+
+# 计算相似度
+similarity = q_emb @ p_emb.T
+```
+
+#### 多模态重排模型
+
+```python
+from FlagEmbedding import FlagAutoReranker
+
+model = FlagAutoReranker.from_finetuned(
+    'jinaai/jina-reranker-m0',
+    use_fp16=True,
+    devices="cuda:0",
+)
+
+# 文本-文本重排
+scores = model.compute_score(
+    [["What is AI?", "Artificial intelligence is ..."]],
+    query_type="text",
+    doc_type="text",
+    normalize=True,
+)
+
+# 文本-图像重排
+scores = model.compute_score(
+    [["What breed of dog?", "dog_photo.jpg"]],
+    query_type="text",
+    doc_type="image",
+    normalize=True,
+)
+```
+
+### 微调
+
+所有模型均支持通过 `torchrun` 进行 LoRA 微调。训练脚本位于 [`examples/finetune/`](examples/finetune/)。
+
+#### 向量模型微调
+
+```bash
+torchrun --nproc_per_node 4 \
+    -m FlagEmbedding.finetune.embedder.multimodal.base \
+    --model_name_or_path Alibaba-NLP/gme-Qwen2-VL-2B-Instruct \
+    --use_lora True \
+    --lora_rank 32 \
+    --lora_alpha 64 \
+    --target_modules q_proj k_proj v_proj o_proj gate_proj down_proj up_proj \
+    --save_merged_lora_model True \
+    --trust_remote_code True \
+    --train_data path/to/train.jsonl \
+    --cache_path ~/.cache \
+    --train_group_size 8 \
+    --query_max_len 512 \
+    --passage_max_len 512 \
+    --pad_to_multiple_of 8 \
+    --output_dir ./output \
+    --learning_rate 1e-4 \
+    --bf16 \
+    --num_train_epochs 3 \
+    --per_device_train_batch_size 4 \
+    --gradient_checkpointing \
+    --deepspeed ds_stage1.json \
+    --temperature 0.02 \
+    --sentence_pooling_method last_token \
+    --normalize_embeddings True
+```
+
+#### 重排模型微调
+
+```bash
+torchrun --nproc_per_node 2 \
+    -m FlagEmbedding.finetune.reranker.multimodal.base \
+    --model_name_or_path jinaai/jina-reranker-m0 \
+    --use_lora True \
+    --lora_rank 32 \
+    --lora_alpha 64 \
+    --loss_type pairwise \
+    --save_merged_lora_model True \
+    --trust_remote_code True \
+    --train_data path/to/train_with_scores.jsonl \
+    --cache_path ~/.cache \
+    --train_group_size 8 \
+    --query_max_len 512 \
+    --passage_max_len 1536 \
+    --output_dir ./output \
+    --learning_rate 5e-5 \
+    --bf16 \
+    --num_train_epochs 3 \
+    --per_device_train_batch_size 4 \
+    --gradient_checkpointing \
+    --deepspeed ds_stage0.json
+```
+
+#### 训练数据格式
+
+**向量模型**（对比学习）— 每行一个 JSON 对象，包含 `query`、`pos` 和 `neg`：
+
+```json
+{
+  "query": "What breed of dog is shown?",
+  "pos": ["A Golden Retriever with a golden coat."],
+  "neg": ["A Siamese cat with blue eyes.", "A tropical fish in an aquarium."]
+}
+```
+
+**重排模型**（pairwise/listwise）— 额外包含 `pos_scores` 和 `neg_scores`：
+
+```json
+{
+  "query": "What breed of dog is shown?",
+  "pos": ["A Golden Retriever with a golden coat."],
+  "pos_scores": [0.95],
+  "neg": ["A Siamese cat with blue eyes.", "A tropical fish in an aquarium."],
+  "neg_scores": [0.12, 0.05]
+}
+```
+
+图像输入可通过 `query_image`、`pos_images` 和 `neg_images` 字段提供（文件路径或 `null`）。
+
+### 兼容性
+
+- **transformers** >= 4.45（已测试 5.8.0）
+- **torch** >= 2.0（已测试 2.10.0）
+- **peft** >= 0.11
+- 自动兼容 transformers 5.x 的 composite config、visual encoder 输出和 ROPE 初始化
+
+---
+
+<!-- ====== 以下为 FlagEmbedding 原始 README（中文） ====== -->
 
 [<img src="./imgs/FlagOpen.png">](https://flagopen.baai.ac.cn/)
 
@@ -54,8 +276,6 @@
 
 ## 更新
 
-- 5/11/2026：完全兼容 **transformers 5.8.0 + torch 2.10.0**（`latest` 环境）。所有兼容性补丁统一收录于 `FlagEmbedding/compat.py`。新增 **Qwen3-VL-Reranker 微调**支持（2B/8B）。新增 **Qwen3-Reranker** 纯文本推理与微调（0.6B/4B/8B）。新增 **Qwen3-Embedding** 微调（0.6B/4B/8B）。jina-reranker-m0 微调在 latest 环境下可用。详见 [CHANGELOG](docs/CHANGELOG_20260511_164720.md)。
-- 5/10/2025：新增 **Qwen3-VL-Embedding**（2B/8B）多模态微调支持（InfoNCE 对比损失），以及 **jina-reranker-m0** 的 pairwise/listwise loss 微调。新增 **Qwen3-VL-Embedding**、**Qwen3-VL-Reranker** 和 **Qwen3-Embedding** 模型的推理支持。详见 [CHANGELOG](docs/CHANGELOG.md)。
 - 3/6/2025：:fire::fire: 推出 **BGE-VL**（[HF 仓库](https://huggingface.co/collections/BAAI/megapairs-67c6bbe49c15a9e7a7c69d92)），最先进的多模态向量模型，支持任意视觉搜索场景（文本到图像、图像到文本、图像+提示到图像、文本到图像+文本等）！采用 MIT 协议开源，学术和商业均可免费使用。同时发布 **MegaPairs**（[仓库](https://github.com/VectorSpaceLab/MegaPairs)，[论文](https://arxiv.org/abs/2412.14475)），大规模合成数据集。
 - 12/5/2024：:book: 我们建立了 [BGE 文档网站](https://www.bge-model.com)，集中汇总 BGE 相关信息和资料！
 - 10/29/2024：:earth_asia: 我们建立了 BGE 微信交流群，扫描 [二维码](./imgs/BGE_WeChat_Group.png) 加入群聊！
@@ -204,39 +424,6 @@ print(similarity)
 | [BAAI/bge-large-zh](https://huggingface.co/BAAI/bge-large-zh) | Chinese | 向量模型，将文本转换为向量 | `为这个句子生成表示以用于检索相关文章：` |
 | [BAAI/bge-base-zh](https://huggingface.co/BAAI/bge-base-zh) | Chinese | base-scale 向量模型 | `为这个句子生成表示以用于检索相关文章：` |
 | [BAAI/bge-small-zh](https://huggingface.co/BAAI/bge-small-zh) | Chinese | small-scale 向量模型 | `为这个句子生成表示以用于检索相关文章：` |
-
-### 多模态向量模型
-
-| 模型 | 模态 | 池化 | 推理 | 微调 | 描述 |
-|:------|:----:|:----:|:----:|:----:|:-----|
-| [BAAI/BGE-VL-MLLM-S1](https://huggingface.co/BAAI/BGE-VL-MLLM-S1) | 图像+文本 | last_token | Yes | Yes | BGE-VL 系列多模态向量模型 |
-| [BAAI/BGE-VL-MLLM-S2](https://huggingface.co/BAAI/BGE-VL-MLLM-S2) | 图像+文本 | last_token | Yes | Yes | BGE-VL 系列多模态向量模型 |
-| [Qwen/Qwen3-VL-Embedding-2B](https://huggingface.co/Qwen/Qwen3-VL-Embedding-2B) | 图像+文本 | last_token | Yes | Yes | Qwen3-VL 多模态向量模型（2B） |
-| [Qwen/Qwen3-VL-Embedding-8B](https://huggingface.co/Qwen/Qwen3-VL-Embedding-8B) | 图像+文本 | last_token | Yes | Yes | Qwen3-VL 多模态向量模型（8B） |
-
-### 多模态重排模型
-
-| 模型 | 模态 | 推理 | 微调 | 损失 | 描述 |
-|:------|:----:|:----:|:----:|:----:|:-----|
-| [jinaai/jina-reranker-m0](https://huggingface.co/jinaai/jina-reranker-m0) | 图像+文本 | Yes | Yes | Pairwise / Listwise | 基于 Qwen2-VL 的多模态重排模型 |
-| [Qwen/Qwen3-VL-Reranker-2B](https://huggingface.co/Qwen/Qwen3-VL-Reranker-2B) | 图像+文本 | Yes | Yes | Pairwise / Listwise | Qwen3-VL 多模态重排模型（2B） |
-| [Qwen/Qwen3-VL-Reranker-8B](https://huggingface.co/Qwen/Qwen3-VL-Reranker-8B) | 图像+文本 | Yes | Yes | Pairwise / Listwise | Qwen3-VL 多模态重排模型（8B） |
-
-### 文本重排模型（新增支持）
-
-| 模型 | 语言 | 推理 | 微调 | 损失 | 描述 |
-|:------|:----:|:----:|:----:|:----:|:-----|
-| [Qwen/Qwen3-Reranker-0.6B](https://huggingface.co/Qwen/Qwen3-Reranker-0.6B) | Multilingual | Yes | Yes | Pairwise / Listwise | Qwen3 文本重排模型（0.6B） |
-| [Qwen/Qwen3-Reranker-4B](https://huggingface.co/Qwen/Qwen3-Reranker-4B) | Multilingual | Yes | Yes | Pairwise / Listwise | Qwen3 文本重排模型（4B） |
-| [Qwen/Qwen3-Reranker-8B](https://huggingface.co/Qwen/Qwen3-Reranker-8B) | Multilingual | Yes | Yes | Pairwise / Listwise | Qwen3 文本重排模型（8B） |
-
-### 文本向量模型（新增支持）
-
-| 模型 | 语言 | 池化 | 推理 | 微调 | 描述 |
-|:------|:----:|:----:|:----:|:----:|:-----|
-| [Qwen/Qwen3-Embedding-0.6B](https://huggingface.co/Qwen/Qwen3-Embedding-0.6B) | Multilingual | last_token | Yes | Yes | Qwen3 文本向量模型（0.6B） |
-| [Qwen/Qwen3-Embedding-4B](https://huggingface.co/Qwen/Qwen3-Embedding-4B) | Multilingual | last_token | Yes | Yes | Qwen3 文本向量模型（4B） |
-| [Qwen/Qwen3-Embedding-8B](https://huggingface.co/Qwen/Qwen3-Embedding-8B) | Multilingual | last_token | Yes | Yes | Qwen3 文本向量模型（8B） |
 
 
 

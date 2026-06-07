@@ -35,6 +35,8 @@ class Qwen3VLEmbedderModel(AbsEmbedderModel):
         )
         self.normalize_embeddings = normalize_embeddings
         self.cross_entropy = torch.nn.CrossEntropyLoss(reduction='mean')
+        # Dummy buffer so DataParallel moves it to each replica's device
+        self.register_buffer('_dp_device', torch.zeros(1))
 
     def encode(self, features):
         """Encode multimodal inputs into embeddings using last-token pooling.
@@ -49,8 +51,8 @@ class Qwen3VLEmbedderModel(AbsEmbedderModel):
         if features is None:
             return None
 
-        # Move features to model device
-        model_kwargs = {k: v.to(self.model.device) for k, v in features.items()}
+        device = self._dp_device.device
+        model_kwargs = {k: v.to(device) if hasattr(v, 'to') else v for k, v in features.items()}
 
         # Reset rope_deltas to avoid Qwen3VL batch-size mismatch bug:
         # When an image batch sets rope_deltas for batch_size=N and a subsequent
@@ -89,16 +91,19 @@ class Qwen3VLEmbedderModel(AbsEmbedderModel):
     def compute_score(self, q_reps, p_reps):
         """Compute similarity scores between query and passage embeddings.
 
+        Scores are scaled by 1/temperature before loss computation so that
+        the softmax in InfoNCE is sharper (temperature < 1 amplifies signal).
+
         Args:
             q_reps (torch.Tensor): Query representations.
             p_reps (torch.Tensor): Passage representations.
 
         Returns:
-            torch.Tensor: Similarity score matrix.
+            torch.Tensor: Similarity score matrix scaled by temperature.
         """
         if len(p_reps.size()) == 2:
-            return torch.matmul(q_reps, p_reps.transpose(0, 1))
-        return torch.matmul(q_reps, p_reps.transpose(-2, -1))
+            return torch.matmul(q_reps, p_reps.transpose(0, 1)) / self.temperature
+        return torch.matmul(q_reps, p_reps.transpose(-2, -1)) / self.temperature
 
     def forward(self, queries=None, passages=None, teacher_scores=None, no_in_batch_neg_flag=False):
         """Forward pass for training with in-batch negatives.

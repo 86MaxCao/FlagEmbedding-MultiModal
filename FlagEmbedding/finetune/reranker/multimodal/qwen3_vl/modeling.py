@@ -146,8 +146,8 @@ class Qwen3VLRerankerModel(AbsRerankerModel):
         ranker_logits = self.encode(pair)
 
         if teacher_scores is not None:
-            teacher_scores = torch.Tensor(teacher_scores)
-            teacher_targets = teacher_scores.view(self.train_batch_size, -1)
+            teacher_scores = torch.Tensor(teacher_scores).to(ranker_logits.device)
+            teacher_scores = teacher_scores.view(self.train_batch_size, -1)
             teacher_targets = torch.softmax(teacher_scores.detach(), dim=-1)
         else:
             teacher_targets = None

@@ -138,4 +138,5 @@ class AbsRerankerDataArguments:
 
 @dataclass
 class AbsRerankerTrainingArguments(TrainingArguments):
+    remove_unused_columns: bool = field(default=False, metadata={"help": "Not remove unused columns to preserve custom dataset fields for the collator"})
     sub_batch_size: Optional[int] = field(default=None, metadata={"help": "sub batch size for training, not implemented yet"})

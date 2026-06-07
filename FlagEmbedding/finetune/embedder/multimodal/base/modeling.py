@@ -57,14 +57,19 @@ class BiMultimodalEmbedderModel(AbsEmbedderModel):
         """
         if features is None:
             return None
-        
-        # For multimodal models, features are already processed by data_process
-        # and we just need to get the outputs with output_hidden_states=True
-        outputs = self.model(**features, output_hidden_states=True)
-        
-        # Extract embeddings from the last token
-        # outputs shape: (batch_size, seq_len, hidden_size)
-        embeddings = outputs[:, -1, :]
+
+        try:
+            outputs = self.model(**features, output_hidden_states=True)
+        except TypeError:
+            outputs = self.model(**features)
+
+        if isinstance(outputs, torch.Tensor):
+            if outputs.ndim == 2:
+                embeddings = outputs
+            else:
+                embeddings = outputs[:, -1, :]
+        else:
+            embeddings = outputs[:, -1, :]
         
         if self.normalize_embeddings:
             embeddings = torch.nn.functional.normalize(embeddings, dim=-1)

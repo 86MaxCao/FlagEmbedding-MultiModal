@@ -33,8 +33,8 @@ class MultimodalEmbedderTrainer(AbsEmbedderTrainer):
         else:
             self.model.save(output_dir)
 
-        if self.tokenizer is not None and self.is_world_process_zero():
-            self.tokenizer.save_pretrained(output_dir)
+        if self.processing_class is not None and self.is_world_process_zero():
+            self.processing_class.save_pretrained(output_dir)
 
         torch.save(self.args, os.path.join(output_dir, "training_args.bin"))
 

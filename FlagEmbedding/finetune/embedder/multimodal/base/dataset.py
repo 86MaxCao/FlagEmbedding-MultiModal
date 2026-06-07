@@ -3,9 +3,9 @@ import math
 import random
 import logging
 import datasets
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from torch.utils.data import Dataset
-from transformers import PreTrainedTokenizer, DataCollatorWithPadding
+from transformers import PreTrainedTokenizer
 import torch.distributed as dist
 
 from FlagEmbedding.abc.finetune.embedder import AbsEmbedderDataArguments
@@ -204,14 +204,16 @@ class MultimodalEmbedderTrainDataset(Dataset):
 
 
 @dataclass
-class MultimodalEmbedderCollator(DataCollatorWithPadding):
+class MultimodalEmbedderCollator:
     """
     Collator for multimodal embedder that uses model's data_process method.
     """
+    tokenizer: PreTrainedTokenizer = None
     query_max_len: int = 512
     passage_max_len: int = 512
-    model: any = None  # The model with data_process method
-    
+    model: object = None
+    pad_to_multiple_of: int = None
+
     def __call__(self, features):
         # Extract data
         query_texts = [f['query_text'] for f in features]

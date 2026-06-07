@@ -8,7 +8,7 @@ import pytest
 import numpy as np
 import torch
 
-from tests.conftest import HF_CACHE_DIR, PROJECT_ROOT
+from conftest import HF_CACHE_DIR, PROJECT_ROOT
 
 pytestmark = pytest.mark.gpu
 
@@ -153,3 +153,127 @@ class TestQwen3VLEmbedding2B:
         emb = model.encode_corpus(corpus=["Paris is the capital of France."])
         assert isinstance(emb, np.ndarray)
         assert emb.shape[0] == 1
+
+
+# ---------------------------------------------------------------------------
+# jina-embeddings-v4 (multimodal: text + image)
+# ---------------------------------------------------------------------------
+
+class TestJinaEmbeddingsV4:
+    MODEL_NAME = "jina-embeddings-v4"
+
+    @pytest.fixture(scope="class")
+    def model(self):
+        _skip_if_missing(self.MODEL_NAME)
+        from FlagEmbedding import FlagAutoModel
+        return FlagAutoModel.from_finetuned(
+            _model_path(self.MODEL_NAME),
+            model_class="jina-embeddings-v4",
+            use_fp16=True,
+            devices="cuda:0",
+            trust_remote_code=True,
+        )
+
+    def test_encode_text_query(self, model):
+        emb = model.encode_queries(queries=["What is the capital of France?"])
+        assert isinstance(emb, np.ndarray)
+        assert emb.ndim == 2
+        assert emb.shape[0] == 1
+        assert not np.isnan(emb).any()
+
+    def test_encode_text_corpus(self, model):
+        emb = model.encode_corpus(corpus=["Paris is the capital of France."])
+        assert isinstance(emb, np.ndarray)
+        assert emb.ndim == 2
+        assert emb.shape[0] == 1
+        assert not np.isnan(emb).any()
+
+    def test_encode_image(self, model, test_images):
+        emb = model.encode_queries(images=[test_images["query"]])
+        assert isinstance(emb, np.ndarray)
+        assert emb.ndim == 2
+        assert emb.shape[0] == 1
+        assert not np.isnan(emb).any()
+
+    def test_normalize_embeddings(self, model):
+        emb = model.encode_queries(queries=["hello world"])
+        norms = np.linalg.norm(emb, axis=1)
+        np.testing.assert_allclose(norms, 1.0, atol=1e-3)
+
+    def test_similarity_text_image(self, model, test_images):
+        query_emb = model.encode_queries(queries=["a photo of a person"])
+        image_emb = model.encode_corpus(images=[test_images["query"]])
+        scores = query_emb @ image_emb.T
+        assert scores.shape == (1, 1)
+
+    def test_batch_encode(self, model):
+        texts = ["hello world", "foo bar", "baz qux"]
+        emb = model.encode_corpus(corpus=texts)
+        assert isinstance(emb, np.ndarray)
+        assert emb.shape[0] == 3
+
+
+# ---------------------------------------------------------------------------
+# gme-Qwen2-VL-2B-Instruct
+# ---------------------------------------------------------------------------
+
+class TestGmeQwen2VL:
+    MODEL_NAME = "gme-Qwen2-VL-2B-Instruct"
+
+    @pytest.fixture(scope="class")
+    def model(self):
+        _skip_if_missing(self.MODEL_NAME)
+        from FlagEmbedding import FlagAutoModel
+        return FlagAutoModel.from_finetuned(
+            _model_path(self.MODEL_NAME),
+            model_class="gme-qwen2vl",
+            use_fp16=True,
+            devices="cuda:0",
+            trust_remote_code=True,
+        )
+
+    def test_encode_text_only(self, model):
+        emb = model.encode_queries(queries=["What is the capital of France?"])
+        assert isinstance(emb, np.ndarray)
+        assert emb.ndim == 2
+        assert emb.shape[0] == 1
+        assert not np.isnan(emb).any()
+
+    def test_encode_image_only(self, model, test_images):
+        emb = model.encode_corpus(images=[test_images["query"]])
+        assert isinstance(emb, np.ndarray)
+        assert emb.ndim == 2
+        assert emb.shape[0] == 1
+        assert not np.isnan(emb).any()
+
+    def test_encode_text_and_image(self, model, test_images):
+        emb = model.encode_queries(
+            queries=["describe this image"],
+            images=[test_images["query"]],
+        )
+        assert isinstance(emb, np.ndarray)
+        assert emb.ndim == 2
+        assert emb.shape[0] == 1
+        assert not np.isnan(emb).any()
+
+    def test_normalize_embeddings(self, model):
+        emb = model.encode_queries(queries=["hello world"])
+        norms = np.linalg.norm(emb, axis=1)
+        np.testing.assert_allclose(norms, 1.0, atol=1e-3)
+
+    def test_similarity_ranking(self, model, test_images):
+        query_emb = model.encode_queries(
+            queries=["a dark photo at night"],
+            images=[test_images["query"]],
+        )
+        corpus_emb = model.encode_corpus(
+            images=[test_images["candi_1"], test_images["candi_2"]],
+        )
+        scores = query_emb @ corpus_emb.T
+        assert scores.shape == (1, 2)
+
+    def test_batch_encode(self, model):
+        texts = ["hello world", "foo bar", "baz qux"]
+        emb = model.encode_corpus(corpus=texts)
+        assert isinstance(emb, np.ndarray)
+        assert emb.shape[0] == 3

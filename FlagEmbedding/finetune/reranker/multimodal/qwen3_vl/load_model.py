@@ -15,11 +15,12 @@ apply_qwen3_vl_reranker_patches()
 
 
 def get_model(model_args: Qwen3VLRerankerModelArguments):
-    """Load Qwen3-VL-Reranker model (base model without lm_head) with processor.
+    """Load Qwen3-VL-Reranker model (full model with lm_head) with processor.
 
-    For training, we use the base Qwen3VLModel (not ForConditionalGeneration)
-    because the official scoring mechanism uses base model's last_hidden_state
-    + a binary linear (yes-no weights from lm_head).
+    We load Qwen3VLForConditionalGeneration so that:
+    1. The lm_head weights are available to initialize the score_linear
+       (yes_weight - no_weight from vocabulary projection).
+    2. The full model can be used for forward passes during training.
 
     Args:
         model_args: Model arguments.

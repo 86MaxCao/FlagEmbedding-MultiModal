@@ -10,7 +10,229 @@ This repository is a **personal fork** maintained by
 [FlagOpen](https://github.com/FlagOpen).  
 All original code is under the Apache 2.0 License; see [LICENSE](LICENSE) for details.
 
+---
 
+## Multimodal Embedding & Reranking
+
+This fork extends [FlagEmbedding](https://github.com/FlagOpen/FlagEmbedding) with multimodal embedding and reranking capabilities. It provides a unified API for inference and LoRA fine-tuning across multiple vision-language models, with full compatibility for **transformers 5.x** (5.8.0+).
+
+### Supported Models
+
+#### Multimodal Embedders
+
+| Model | Modality | Pooling | Inference | Fine-tuning | Description |
+|:------|:--------:|:-------:|:---------:|:-----------:|:------------|
+| [Alibaba-NLP/gme-Qwen2-VL-2B-Instruct](https://huggingface.co/Alibaba-NLP/gme-Qwen2-VL-2B-Instruct) | Image+Text | last_token | Yes | Yes | GME multimodal embedding model based on Qwen2-VL (2B) |
+| [jinaai/jina-embeddings-v4](https://huggingface.co/jinaai/jina-embeddings-v4) | Image+Text | last_token | Yes | Yes | Jina multimodal embedding model with multi-task LoRA adapters |
+| [BAAI/BGE-VL-MLLM-S1](https://huggingface.co/BAAI/BGE-VL-MLLM-S1) | Image+Text | last_token | Yes | Yes | Multimodal embedding model from BGE-VL series |
+| [BAAI/BGE-VL-MLLM-S2](https://huggingface.co/BAAI/BGE-VL-MLLM-S2) | Image+Text | last_token | Yes | Yes | Multimodal embedding model from BGE-VL series |
+| [Qwen/Qwen3-VL-Embedding-2B](https://huggingface.co/Qwen/Qwen3-VL-Embedding-2B) | Image+Text | last_token | Yes | Yes | Qwen3-VL multimodal embedding model (2B) |
+| [Qwen/Qwen3-VL-Embedding-8B](https://huggingface.co/Qwen/Qwen3-VL-Embedding-8B) | Image+Text | last_token | Yes | Yes | Qwen3-VL multimodal embedding model (8B) |
+
+#### Multimodal Rerankers
+
+| Model | Modality | Inference | Fine-tuning | Loss | Description |
+|:------|:--------:|:---------:|:-----------:|:----:|:------------|
+| [jinaai/jina-reranker-m0](https://huggingface.co/jinaai/jina-reranker-m0) | Image+Text | Yes | Yes | Pairwise / Listwise | Multimodal reranker based on Qwen2-VL |
+| [Qwen/Qwen3-VL-Reranker-2B](https://huggingface.co/Qwen/Qwen3-VL-Reranker-2B) | Image+Text | Yes | Yes | Pairwise / Listwise | Qwen3-VL multimodal reranker (2B) |
+| [Qwen/Qwen3-VL-Reranker-8B](https://huggingface.co/Qwen/Qwen3-VL-Reranker-8B) | Image+Text | Yes | Yes | Pairwise / Listwise | Qwen3-VL multimodal reranker (8B) |
+
+#### Text Embedders
+
+| Model | Language | Pooling | Inference | Fine-tuning | Description |
+|:------|:--------:|:-------:|:---------:|:-----------:|:------------|
+| [Qwen/Qwen3-Embedding-0.6B](https://huggingface.co/Qwen/Qwen3-Embedding-0.6B) | Multilingual | last_token | Yes | Yes | Qwen3 text embedding model (0.6B) |
+| [Qwen/Qwen3-Embedding-4B](https://huggingface.co/Qwen/Qwen3-Embedding-4B) | Multilingual | last_token | Yes | Yes | Qwen3 text embedding model (4B) |
+| [Qwen/Qwen3-Embedding-8B](https://huggingface.co/Qwen/Qwen3-Embedding-8B) | Multilingual | last_token | Yes | Yes | Qwen3 text embedding model (8B) |
+
+#### Text Rerankers
+
+| Model | Language | Inference | Fine-tuning | Loss | Description |
+|:------|:--------:|:---------:|:-----------:|:----:|:------------|
+| [Qwen/Qwen3-Reranker-0.6B](https://huggingface.co/Qwen/Qwen3-Reranker-0.6B) | Multilingual | Yes | Yes | Pairwise / Listwise | Qwen3 text reranker model (0.6B) |
+| [Qwen/Qwen3-Reranker-4B](https://huggingface.co/Qwen/Qwen3-Reranker-4B) | Multilingual | Yes | Yes | Pairwise / Listwise | Qwen3 text reranker model (4B) |
+| [Qwen/Qwen3-Reranker-8B](https://huggingface.co/Qwen/Qwen3-Reranker-8B) | Multilingual | Yes | Yes | Pairwise / Listwise | Qwen3 text reranker model (8B) |
+
+### Inference
+
+#### Multimodal Embedder
+
+```python
+from FlagEmbedding import FlagAutoModel
+
+# GME-Qwen2-VL
+model = FlagAutoModel.from_finetuned(
+    'Alibaba-NLP/gme-Qwen2-VL-2B-Instruct',
+    model_class="gme-qwen2vl",
+    use_fp16=True,
+    devices="cuda:0",
+    trust_remote_code=True,
+)
+
+# jina-embeddings-v4
+model = FlagAutoModel.from_finetuned(
+    'jinaai/jina-embeddings-v4',
+    model_class="jina-embeddings-v4",
+    use_fp16=True,
+    devices="cuda:0",
+    trust_remote_code=True,
+)
+
+# BGE-VL
+model = FlagAutoModel.from_finetuned(
+    'BAAI/BGE-VL-MLLM-S1',
+    model_class="multimodal-mllm",
+    use_fp16=True,
+    devices="cuda:0",
+    trust_remote_code=True,
+)
+```
+
+Encode queries and corpus (text, images, or both):
+
+```python
+# Text-only
+q_emb = model.encode_queries(queries=["What breed of dog is this?"])
+p_emb = model.encode_corpus(corpus=["A golden retriever in a park."])
+
+# Image-only
+q_emb = model.encode_queries(images=["query_image.jpg"])
+p_emb = model.encode_corpus(images=["doc_image.jpg"])
+
+# Text + Image
+q_emb = model.encode_queries(
+    queries=["Describe the architecture"],
+    images=["building.jpg"],
+)
+
+# Compute similarity
+similarity = q_emb @ p_emb.T
+```
+
+#### Multimodal Reranker
+
+```python
+from FlagEmbedding import FlagAutoReranker
+
+model = FlagAutoReranker.from_finetuned(
+    'jinaai/jina-reranker-m0',
+    use_fp16=True,
+    devices="cuda:0",
+)
+
+# Text-to-text reranking
+scores = model.compute_score(
+    [["What is AI?", "Artificial intelligence is ..."]],
+    query_type="text",
+    doc_type="text",
+    normalize=True,
+)
+
+# Text-to-image reranking
+scores = model.compute_score(
+    [["What breed of dog?", "dog_photo.jpg"]],
+    query_type="text",
+    doc_type="image",
+    normalize=True,
+)
+```
+
+### Fine-tuning
+
+All models support LoRA fine-tuning via `torchrun`. Training scripts are in [`examples/finetune/`](examples/finetune/).
+
+#### Embedder Fine-tuning
+
+```bash
+torchrun --nproc_per_node 4 \
+    -m FlagEmbedding.finetune.embedder.multimodal.base \
+    --model_name_or_path Alibaba-NLP/gme-Qwen2-VL-2B-Instruct \
+    --use_lora True \
+    --lora_rank 32 \
+    --lora_alpha 64 \
+    --target_modules q_proj k_proj v_proj o_proj gate_proj down_proj up_proj \
+    --save_merged_lora_model True \
+    --trust_remote_code True \
+    --train_data path/to/train.jsonl \
+    --cache_path ~/.cache \
+    --train_group_size 8 \
+    --query_max_len 512 \
+    --passage_max_len 512 \
+    --pad_to_multiple_of 8 \
+    --output_dir ./output \
+    --learning_rate 1e-4 \
+    --bf16 \
+    --num_train_epochs 3 \
+    --per_device_train_batch_size 4 \
+    --gradient_checkpointing \
+    --deepspeed ds_stage1.json \
+    --temperature 0.02 \
+    --sentence_pooling_method last_token \
+    --normalize_embeddings True
+```
+
+#### Reranker Fine-tuning
+
+```bash
+torchrun --nproc_per_node 2 \
+    -m FlagEmbedding.finetune.reranker.multimodal.base \
+    --model_name_or_path jinaai/jina-reranker-m0 \
+    --use_lora True \
+    --lora_rank 32 \
+    --lora_alpha 64 \
+    --loss_type pairwise \
+    --save_merged_lora_model True \
+    --trust_remote_code True \
+    --train_data path/to/train_with_scores.jsonl \
+    --cache_path ~/.cache \
+    --train_group_size 8 \
+    --query_max_len 512 \
+    --passage_max_len 1536 \
+    --output_dir ./output \
+    --learning_rate 5e-5 \
+    --bf16 \
+    --num_train_epochs 3 \
+    --per_device_train_batch_size 4 \
+    --gradient_checkpointing \
+    --deepspeed ds_stage0.json
+```
+
+#### Training Data Format
+
+**Embedder** (contrastive learning) — each line is a JSON object with `query`, `pos`, and `neg`:
+
+```json
+{
+  "query": "What breed of dog is shown?",
+  "pos": ["A Golden Retriever with a golden coat."],
+  "neg": ["A Siamese cat with blue eyes.", "A tropical fish in an aquarium."]
+}
+```
+
+**Reranker** (pairwise/listwise) — adds `pos_scores` and `neg_scores`:
+
+```json
+{
+  "query": "What breed of dog is shown?",
+  "pos": ["A Golden Retriever with a golden coat."],
+  "pos_scores": [0.95],
+  "neg": ["A Siamese cat with blue eyes.", "A tropical fish in an aquarium."],
+  "neg_scores": [0.12, 0.05]
+}
+```
+
+Image inputs can be provided via `query_image`, `pos_images`, and `neg_images` fields (file paths or `null`).
+
+### Compatibility
+
+- **transformers** >= 4.45 (tested with 5.8.0)
+- **torch** >= 2.0 (tested with 2.10.0)
+- **peft** >= 0.11
+- Automatic compatibility patches for transformers 5.x composite configs, visual encoder output, and ROPE initialization
+
+---
+
+<!-- ====== Original FlagEmbedding README below ====== -->
 
 [<img src="./imgs/FlagOpen.png">](https://flagopen.baai.ac.cn/)
 
@@ -56,8 +278,6 @@ All original code is under the Apache 2.0 License; see [LICENSE](LICENSE) for de
 
 ## News
 
-- 5/11/2026: Full compatibility with **transformers 5.8.0 + torch 2.10.0** (`latest` env). All patches consolidated into `FlagEmbedding/compat.py`. Add **Qwen3-VL-Reranker fine-tuning** support (2B/8B). Add **Qwen3-Reranker** text-only inference and fine-tuning (0.6B/4B/8B). Add **Qwen3-Embedding** fine-tuning (0.6B/4B/8B). jina-reranker-m0 fine-tune now works in latest env. See [CHANGELOG](docs/CHANGELOG_20260511_164720.md) for details.
-- 5/10/2025: Add multimodal fine-tuning support for **Qwen3-VL-Embedding** (2B/8B) with InfoNCE contrastive loss, and **jina-reranker-m0** with pairwise/listwise loss. Add inference support for **Qwen3-VL-Embedding**, **Qwen3-VL-Reranker**, and **Qwen3-Embedding** models. See [CHANGELOG](docs/CHANGELOG.md) for details.
 - 3/6/2025: :fire::fire: Introduce **BGE-VL** ([HF repo](https://huggingface.co/collections/BAAI/megapairs-67c6bbe49c15a9e7a7c69d92)), State-Of-The-Art multimodal embedding models to support Any visual search applications (everything, including text-to-image, image-to-text, image&prompt-to-image, text-to-image&text, and more)! They are released under the MIT license and are completely free for both academic and commercial use. We also release **MegaPairs** ([repo](https://github.com/VectorSpaceLab/MegaPairs), [paper](https://arxiv.org/abs/2412.14475)), a massive synthetic dataset which empowers BGE-VL!
 - 12/5/2024: :book: We built the [BGE documentation](https://www.bge-model.com) for centralized BGE information and materials!
 - 10/29/2024: :earth_asia: We created WeChat group for BGE. Scan the [QR code](./imgs/BGE_WeChat_Group.png) to join the group chat! To get the first hand message about our updates and new release, or having any questions or ideas, join us now!
@@ -216,39 +436,6 @@ The following contents are releasing in the upcoming weeks:
 | [BAAI/bge-base-zh](https://huggingface.co/BAAI/bge-base-zh)               |   Chinese |                                    a base-scale model but with similar ability to `bge-large-zh`                                    |                                     `为这个句子生成表示以用于检索相关文章：`                                      |
 | [BAAI/bge-small-zh](https://huggingface.co/BAAI/bge-small-zh)             |   Chinese |                                        a small-scale model but with competitive performance                                         |                                     `为这个句子生成表示以用于检索相关文章：`                                      |
 
-### Multimodal Embedders
-
-| Model | Modality | Pooling | Inference | Fine-tuning | Description |
-|:------|:--------:|:-------:|:---------:|:-----------:|:------------|
-| [BAAI/BGE-VL-MLLM-S1](https://huggingface.co/BAAI/BGE-VL-MLLM-S1) | Image+Text | last_token | Yes | Yes | Multimodal embedding model from BGE-VL series |
-| [BAAI/BGE-VL-MLLM-S2](https://huggingface.co/BAAI/BGE-VL-MLLM-S2) | Image+Text | last_token | Yes | Yes | Multimodal embedding model from BGE-VL series |
-| [Qwen/Qwen3-VL-Embedding-2B](https://huggingface.co/Qwen/Qwen3-VL-Embedding-2B) | Image+Text | last_token | Yes | Yes | Qwen3-VL multimodal embedding model (2B) |
-| [Qwen/Qwen3-VL-Embedding-8B](https://huggingface.co/Qwen/Qwen3-VL-Embedding-8B) | Image+Text | last_token | Yes | Yes | Qwen3-VL multimodal embedding model (8B) |
-
-### Multimodal Rerankers
-
-| Model | Modality | Inference | Fine-tuning | Loss | Description |
-|:------|:--------:|:---------:|:-----------:|:----:|:------------|
-| [jinaai/jina-reranker-m0](https://huggingface.co/jinaai/jina-reranker-m0) | Image+Text | Yes | Yes | Pairwise / Listwise | Multimodal reranker based on Qwen2-VL |
-| [Qwen/Qwen3-VL-Reranker-2B](https://huggingface.co/Qwen/Qwen3-VL-Reranker-2B) | Image+Text | Yes | Yes | Pairwise / Listwise | Qwen3-VL multimodal reranker (2B) |
-| [Qwen/Qwen3-VL-Reranker-8B](https://huggingface.co/Qwen/Qwen3-VL-Reranker-8B) | Image+Text | Yes | Yes | Pairwise / Listwise | Qwen3-VL multimodal reranker (8B) |
-
-### Text Rerankers (Newly Supported)
-
-| Model | Language | Inference | Fine-tuning | Loss | Description |
-|:------|:--------:|:---------:|:-----------:|:----:|:------------|
-| [Qwen/Qwen3-Reranker-0.6B](https://huggingface.co/Qwen/Qwen3-Reranker-0.6B) | Multilingual | Yes | Yes | Pairwise / Listwise | Qwen3 text reranker model (0.6B) |
-| [Qwen/Qwen3-Reranker-4B](https://huggingface.co/Qwen/Qwen3-Reranker-4B) | Multilingual | Yes | Yes | Pairwise / Listwise | Qwen3 text reranker model (4B) |
-| [Qwen/Qwen3-Reranker-8B](https://huggingface.co/Qwen/Qwen3-Reranker-8B) | Multilingual | Yes | Yes | Pairwise / Listwise | Qwen3 text reranker model (8B) |
-
-### Text Embedders (Newly Supported)
-
-| Model | Language | Pooling | Inference | Fine-tuning | Description |
-|:------|:--------:|:-------:|:---------:|:-----------:|:------------|
-| [Qwen/Qwen3-Embedding-0.6B](https://huggingface.co/Qwen/Qwen3-Embedding-0.6B) | Multilingual | last_token | Yes | Yes | Qwen3 text embedding model (0.6B) |
-| [Qwen/Qwen3-Embedding-4B](https://huggingface.co/Qwen/Qwen3-Embedding-4B) | Multilingual | last_token | Yes | Yes | Qwen3 text embedding model (4B) |
-| [Qwen/Qwen3-Embedding-8B](https://huggingface.co/Qwen/Qwen3-Embedding-8B) | Multilingual | last_token | Yes | Yes | Qwen3 text embedding model (8B) |
-
 
 
 ### Contributors:
@@ -310,4 +497,3 @@ FlagEmbedding is licensed under the [MIT License](https://github.com/FlagOpen/Fl
 Copyright 2023 FlagOpen.  
 Source repository: [FlagOpen/FlagEmbedding](https://github.com/FlagOpen/FlagEmbedding)  
 Licensed under the Apache License, Version 2.0.
-

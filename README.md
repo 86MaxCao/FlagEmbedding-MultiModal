@@ -14,9 +14,9 @@ All original code is under the Apache 2.0 License; see [LICENSE](LICENSE) for de
 
 ## Multimodal Embedding & Reranking
 
-This fork extends [FlagEmbedding](https://github.com/FlagOpen/FlagEmbedding) with multimodal embedding and reranking capabilities. It provides a unified API for inference and LoRA fine-tuning across multiple vision-language models, with full compatibility for **transformers 5.x** (5.8.0+).
+This fork extends [FlagEmbedding](https://github.com/FlagOpen/FlagEmbedding) with multimodal embedding and reranking capabilities. It provides a unified API for inference, LoRA fine-tuning, and evaluation across multiple vision-language models, with full compatibility for **transformers 5.x** (5.8.0+).
 
-### Supported Models
+### 1. Supported Models
 
 #### Multimodal Embedders
 
@@ -53,9 +53,15 @@ This fork extends [FlagEmbedding](https://github.com/FlagOpen/FlagEmbedding) wit
 | [Qwen/Qwen3-Reranker-4B](https://huggingface.co/Qwen/Qwen3-Reranker-4B) | Multilingual | Yes | Yes | Pairwise / Listwise | Qwen3 text reranker model (4B) |
 | [Qwen/Qwen3-Reranker-8B](https://huggingface.co/Qwen/Qwen3-Reranker-8B) | Multilingual | Yes | Yes | Pairwise / Listwise | Qwen3 text reranker model (8B) |
 
-### Inference
+---
 
-#### Multimodal Embedder
+### 2. Inference
+
+Use `FlagAutoModel` for embedders and `FlagAutoReranker` for rerankers. All models support text, image, and text+image inputs.
+
+#### Embedder Inference
+
+Load a multimodal embedder:
 
 ```python
 from FlagEmbedding import FlagAutoModel
@@ -109,7 +115,9 @@ q_emb = model.encode_queries(
 similarity = q_emb @ p_emb.T
 ```
 
-#### Multimodal Reranker
+#### Reranker Inference
+
+Load a multimodal reranker and compute scores:
 
 ```python
 from FlagEmbedding import FlagAutoReranker
@@ -137,9 +145,99 @@ scores = model.compute_score(
 )
 ```
 
-### Fine-tuning
+---
 
-All models support LoRA fine-tuning via `torchrun`. Training scripts are in [`examples/finetune/`](examples/finetune/).
+### 3. Evaluation
+
+#### MMEB-V2 (Video Tasks)
+
+Built-in evaluation module for [MMEB-V2](https://huggingface.co/datasets/TIGER-Lab/MMEB-V2) (Massive Multimodal Embedding Benchmark V2) video tasks, covering **4 task types** across **9 datasets**:
+
+| Task Type | Datasets | Query | Corpus |
+|:----------|:---------|:------|:-------|
+| Video Classification | UCF101, HMDB51, Breakfast, K700, SSV2-actiontemplate | Video grid image + instruction | Category labels (text) |
+| Video QA | ActivityNetQA | Video grid image + question | Answer texts |
+| Moment Retrieval | Charades_STA, QVHighlight | Text query | Video clip grid images |
+| Video Retrieval | SSV2 | Video grid image | Positive/negative texts |
+
+Video frames are uniformly sampled (default 8 frames), resized to 224x224, and composited into a single grid PNG image for compatibility with image-based embedding/reranking APIs.
+
+##### Data Preparation
+
+1. Download the MMEB-V2 dataset from HuggingFace: [TIGER-Lab/MMEB-V2](https://huggingface.co/datasets/TIGER-Lab/MMEB-V2)
+2. Extract frame archives under `video-tasks/frames/`:
+   ```bash
+   cd /path/to/MMEB-V2/video-tasks/frames
+   tar -xzf video_cls.tar.gz    # UCF101, HMDB51, Breakfast, K700, SSV2
+   tar -xzf video_qa.tar.gz     # ActivityNetQA (may be split into multiple parts)
+   tar -xzf video_mret.tar.gz   # Charades_STA, QVHighlight
+   tar -xzf video_ret.tar.gz    # SSV2
+   ```
+3. Verify that JSONL data files exist under `video-tasks/data/` (e.g., `ucf101.jsonl`, `activitynetqa.jsonl`, etc.)
+
+##### Embedder-only Evaluation
+
+```bash
+python -m FlagEmbedding.evaluation.mmeb_v2 \
+    --eval_name mmeb_v2 \
+    --dataset_dir /path/to/MMEB-V2/video-tasks \
+    --sub_datasets ucf101 hmdb51 breakfast k700 ssv2-actiontemplate activitynetqa charades_sta qvhighlight ssv2 \
+    --max_frames 8 \
+    --frame_size 224 \
+    --splits test \
+    --corpus_embd_save_dir ./mmeb_v2/corpus_embd \
+    --output_dir ./mmeb_v2/search_results \
+    --search_top_k 100 \
+    --k_values 1 3 5 10 20 50 100 \
+    --eval_output_method markdown \
+    --eval_output_path ./mmeb_v2/eval_results.md \
+    --eval_metrics ndcg_at_10 recall_at_10 recall_at_50 map \
+    --embedder_name_or_path BAAI/BGE-VL-MLLM-S1 \
+    --embedder_model_class multimodal-mllm \
+    --devices cuda:0 \
+    --use_fp16
+```
+
+##### Two-stage Evaluation (Retrieval + Reranking)
+
+Add `--reranker_name_or_path` and `--rerank_top_k` for two-stage evaluation:
+
+```bash
+python -m FlagEmbedding.evaluation.mmeb_v2 \
+    --eval_name mmeb_v2 \
+    --dataset_dir /path/to/MMEB-V2/video-tasks \
+    --sub_datasets ucf101 hmdb51 breakfast k700 ssv2-actiontemplate activitynetqa charades_sta qvhighlight ssv2 \
+    --embedder_name_or_path BAAI/BGE-VL-MLLM-S1 \
+    --embedder_model_class multimodal-mllm \
+    --reranker_name_or_path jinaai/jina-reranker-m0 \
+    --rerank_top_k 100 \
+    --devices cuda:0 \
+    --use_fp16
+```
+
+##### Quick Test Mode
+
+Set `QUICK_TEST=true` to run with only 50 samples on 3 datasets for fast validation:
+
+```bash
+QUICK_TEST=true bash examples/evaluation/mmeb_v2/eval_bge_vl.sh
+```
+
+##### Evaluation Scripts
+
+| Model | Type | Script |
+|:------|:-----|:-------|
+| BGE-VL (BAAI/BGE-VL-MLLM-S1) | Embedder | [`examples/evaluation/mmeb_v2/eval_bge_vl.sh`](examples/evaluation/mmeb_v2/eval_bge_vl.sh) |
+| jina-embeddings-v4 | Embedder | [`examples/evaluation/mmeb_v2/eval_jina_v4.sh`](examples/evaluation/mmeb_v2/eval_jina_v4.sh) |
+| Qwen3-VL-Embedding-2B | Embedder | [`examples/evaluation/mmeb_v2/eval_qwen3_vl_emb.sh`](examples/evaluation/mmeb_v2/eval_qwen3_vl_emb.sh) |
+| jina-reranker-m0 | Reranker | [`examples/evaluation/mmeb_v2/eval_jina_m0.sh`](examples/evaluation/mmeb_v2/eval_jina_m0.sh) |
+| Qwen3-VL-Reranker-2B | Reranker | [`examples/evaluation/mmeb_v2/eval_qwen3_vl_rer.sh`](examples/evaluation/mmeb_v2/eval_qwen3_vl_rer.sh) |
+
+---
+
+### 4. Fine-tuning
+
+All models support LoRA fine-tuning via `torchrun`. Full training scripts are in [`examples/finetune/`](examples/finetune/).
 
 #### Embedder Fine-tuning
 
@@ -222,6 +320,66 @@ torchrun --nproc_per_node 2 \
 ```
 
 Image inputs can be provided via `query_image`, `pos_images`, and `neg_images` fields (file paths or `null`).
+
+#### MMEB-train Dataset (Parquet Format)
+
+In addition to JSON/JSONL, the training pipeline supports [TIGER-Lab/MMEB-train](https://huggingface.co/datasets/TIGER-Lab/MMEB-train) — a large-scale multimodal training dataset with 20 task subsets in **Parquet** format. Each subset directory contains Parquet files with the following schema:
+
+| Field | Type | Description |
+|:------|:-----|:------------|
+| `qry` | string | Query text (may contain `<\|image_1\|>` placeholder) |
+| `qry_image_path` | string \| null | Relative path to query image |
+| `pos_text` | string | Positive passage text |
+| `pos_image_path` | string \| null | Relative path to positive image |
+| `neg_text` | string \| null | Negative passage text |
+| `neg_image_path` | string \| null | Relative path to negative image |
+| `instruction` | string | Task instruction |
+
+##### Data Preparation
+
+1. Download the dataset from HuggingFace:
+   ```bash
+   huggingface-cli download TIGER-Lab/MMEB-train --repo-type dataset --local-dir /path/to/MMEB-train
+   ```
+
+2. Extract images from zip archives:
+   ```bash
+   cd /path/to/MMEB-train
+   python unzip_file.py  # extracts images_zip/*.zip → images/
+   ```
+
+##### Usage with `image_root_dir`
+
+Since Parquet files store **relative** image paths (e.g., `images/A-OKVQA/Train/xxx.jpg`), use the `--image_root_dir` parameter to specify the root directory for resolving these paths:
+
+```bash
+torchrun --nproc_per_node 4 \
+    -m FlagEmbedding.finetune.embedder.multimodal.base \
+    --model_name_or_path BAAI/BGE-VL-MLLM-S1 \
+    --train_data /path/to/MMEB-train/A-OKVQA /path/to/MMEB-train/CIRR ... \
+    --image_root_dir /path/to/MMEB-train/images \
+    --use_lora True \
+    --lora_rank 32 \
+    --lora_alpha 64 \
+    --output_dir ./output \
+    --bf16 \
+    --num_train_epochs 3 \
+    --deepspeed ds_stage1.json
+```
+
+Each `--train_data` entry is a **directory** containing Parquet files. The pipeline automatically detects `.parquet` files and loads them with the correct field mappings.
+
+##### Training Scripts
+
+| Model | Type | Script |
+|:------|:-----|:-------|
+| BGE-VL (BAAI/BGE-VL-MLLM-S1) | Embedder | [`examples/finetune/embedder/multimodal/bge_vl_mmeb_train.sh`](examples/finetune/embedder/multimodal/bge_vl_mmeb_train.sh) |
+| jina-embeddings-v4 | Embedder | [`examples/finetune/embedder/multimodal/jina_v4_mmeb_train.sh`](examples/finetune/embedder/multimodal/jina_v4_mmeb_train.sh) |
+| Qwen3-VL-Embedding-2B | Embedder | [`examples/finetune/embedder/multimodal/qwen3_vl_emb_mmeb_train.sh`](examples/finetune/embedder/multimodal/qwen3_vl_emb_mmeb_train.sh) |
+| jina-reranker-m0 | Reranker | [`examples/finetune/reranker/multimodal/jina_m0_mmeb_train.sh`](examples/finetune/reranker/multimodal/jina_m0_mmeb_train.sh) |
+| Qwen3-VL-Reranker-2B | Reranker | [`examples/finetune/reranker/multimodal/qwen3_vl_rer_mmeb_train.sh`](examples/finetune/reranker/multimodal/qwen3_vl_rer_mmeb_train.sh) |
+
+---
 
 ### Compatibility
 

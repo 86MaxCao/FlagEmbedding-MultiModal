@@ -15,7 +15,7 @@
 
 本 fork 为 [FlagEmbedding](https://github.com/FlagOpen/FlagEmbedding) 扩展了多模态向量和重排能力，提供统一的推理与 LoRA 微调 API，支持多种视觉语言模型，完全兼容 **transformers 5.x**（5.8.0+）。
 
-### 支持模型
+### 1. 支持模型
 
 #### 多模态向量模型
 
@@ -52,9 +52,15 @@
 | [Qwen/Qwen3-Reranker-4B](https://huggingface.co/Qwen/Qwen3-Reranker-4B) | Multilingual | Yes | Yes | Pairwise / Listwise | Qwen3 文本重排模型（4B） |
 | [Qwen/Qwen3-Reranker-8B](https://huggingface.co/Qwen/Qwen3-Reranker-8B) | Multilingual | Yes | Yes | Pairwise / Listwise | Qwen3 文本重排模型（8B） |
 
-### 推理
+---
 
-#### 多模态向量模型
+### 2. 推理
+
+向量模型使用 `FlagAutoModel`，重排模型使用 `FlagAutoReranker`。所有模型均支持文本、图像和文本+图像输入。
+
+#### 向量模型推理
+
+加载多模态向量模型：
 
 ```python
 from FlagEmbedding import FlagAutoModel
@@ -108,7 +114,9 @@ q_emb = model.encode_queries(
 similarity = q_emb @ p_emb.T
 ```
 
-#### 多模态重排模型
+#### 重排模型推理
+
+加载多模态重排模型并计算分数：
 
 ```python
 from FlagEmbedding import FlagAutoReranker
@@ -136,9 +144,99 @@ scores = model.compute_score(
 )
 ```
 
-### 微调
+---
 
-所有模型均支持通过 `torchrun` 进行 LoRA 微调。训练脚本位于 [`examples/finetune/`](examples/finetune/)。
+### 3. 评估
+
+#### MMEB-V2（视频任务）
+
+内置 [MMEB-V2](https://huggingface.co/datasets/TIGER-Lab/MMEB-V2)（Massive Multimodal Embedding Benchmark V2）视频任务评估模块，覆盖 **4 种任务类型**、**9 个数据集**：
+
+| 任务类型 | 数据集 | 查询 | 语料 |
+|:---------|:-------|:-----|:-----|
+| 视频分类 | UCF101, HMDB51, Breakfast, K700, SSV2-actiontemplate | 视频网格图 + 指令 | 类别标签（文本） |
+| 视频问答 | ActivityNetQA | 视频网格图 + 问题 | 答案文本 |
+| 时刻检索 | Charades_STA, QVHighlight | 文本查询 | 视频片段网格图 |
+| 视频检索 | SSV2 | 视频网格图 | 正/负例文本 |
+
+视频帧均匀采样（默认 8 帧），缩放至 224x224，拼接为单张网格 PNG 图像，兼容基于图像的向量/重排 API。
+
+##### 数据准备
+
+1. 从 HuggingFace 下载 MMEB-V2 数据集：[TIGER-Lab/MMEB-V2](https://huggingface.co/datasets/TIGER-Lab/MMEB-V2)
+2. 在 `video-tasks/frames/` 下解压帧数据：
+   ```bash
+   cd /path/to/MMEB-V2/video-tasks/frames
+   tar -xzf video_cls.tar.gz    # UCF101, HMDB51, Breakfast, K700, SSV2
+   tar -xzf video_qa.tar.gz     # ActivityNetQA（可能分多个分卷）
+   tar -xzf video_mret.tar.gz   # Charades_STA, QVHighlight
+   tar -xzf video_ret.tar.gz    # SSV2
+   ```
+3. 确认 JSONL 数据文件在 `video-tasks/data/` 下（如 `ucf101.jsonl`、`activitynetqa.jsonl` 等）
+
+##### 仅向量模型评估
+
+```bash
+python -m FlagEmbedding.evaluation.mmeb_v2 \
+    --eval_name mmeb_v2 \
+    --dataset_dir /path/to/MMEB-V2/video-tasks \
+    --sub_datasets ucf101 hmdb51 breakfast k700 ssv2-actiontemplate activitynetqa charades_sta qvhighlight ssv2 \
+    --max_frames 8 \
+    --frame_size 224 \
+    --splits test \
+    --corpus_embd_save_dir ./mmeb_v2/corpus_embd \
+    --output_dir ./mmeb_v2/search_results \
+    --search_top_k 100 \
+    --k_values 1 3 5 10 20 50 100 \
+    --eval_output_method markdown \
+    --eval_output_path ./mmeb_v2/eval_results.md \
+    --eval_metrics ndcg_at_10 recall_at_10 recall_at_50 map \
+    --embedder_name_or_path BAAI/BGE-VL-MLLM-S1 \
+    --embedder_model_class multimodal-mllm \
+    --devices cuda:0 \
+    --use_fp16
+```
+
+##### 两阶段评估（检索 + 重排）
+
+添加 `--reranker_name_or_path` 和 `--rerank_top_k` 进行两阶段评估：
+
+```bash
+python -m FlagEmbedding.evaluation.mmeb_v2 \
+    --eval_name mmeb_v2 \
+    --dataset_dir /path/to/MMEB-V2/video-tasks \
+    --sub_datasets ucf101 hmdb51 breakfast k700 ssv2-actiontemplate activitynetqa charades_sta qvhighlight ssv2 \
+    --embedder_name_or_path BAAI/BGE-VL-MLLM-S1 \
+    --embedder_model_class multimodal-mllm \
+    --reranker_name_or_path jinaai/jina-reranker-m0 \
+    --rerank_top_k 100 \
+    --devices cuda:0 \
+    --use_fp16
+```
+
+##### 快速测试模式
+
+设置 `QUICK_TEST=true` 仅使用 50 个样本、3 个数据集快速验证：
+
+```bash
+QUICK_TEST=true bash examples/evaluation/mmeb_v2/eval_bge_vl.sh
+```
+
+##### 评估脚本
+
+| 模型 | 类型 | 脚本 |
+|:-----|:-----|:-----|
+| BGE-VL (BAAI/BGE-VL-MLLM-S1) | 向量模型 | [`examples/evaluation/mmeb_v2/eval_bge_vl.sh`](examples/evaluation/mmeb_v2/eval_bge_vl.sh) |
+| jina-embeddings-v4 | 向量模型 | [`examples/evaluation/mmeb_v2/eval_jina_v4.sh`](examples/evaluation/mmeb_v2/eval_jina_v4.sh) |
+| Qwen3-VL-Embedding-2B | 向量模型 | [`examples/evaluation/mmeb_v2/eval_qwen3_vl_emb.sh`](examples/evaluation/mmeb_v2/eval_qwen3_vl_emb.sh) |
+| jina-reranker-m0 | 重排模型 | [`examples/evaluation/mmeb_v2/eval_jina_m0.sh`](examples/evaluation/mmeb_v2/eval_jina_m0.sh) |
+| Qwen3-VL-Reranker-2B | 重排模型 | [`examples/evaluation/mmeb_v2/eval_qwen3_vl_rer.sh`](examples/evaluation/mmeb_v2/eval_qwen3_vl_rer.sh) |
+
+---
+
+### 4. 微调
+
+所有模型均支持通过 `torchrun` 进行 LoRA 微调。完整训练脚本位于 [`examples/finetune/`](examples/finetune/)。
 
 #### 向量模型微调
 
@@ -221,6 +319,67 @@ torchrun --nproc_per_node 2 \
 ```
 
 图像输入可通过 `query_image`、`pos_images` 和 `neg_images` 字段提供（文件路径或 `null`）。
+
+#### MMEB-train 数据集（Parquet 格式）
+
+除 JSON/JSONL 外，训练管线还支持 [TIGER-Lab/MMEB-train](https://huggingface.co/datasets/TIGER-Lab/MMEB-train) — 包含 20 个多模态任务子集的大规模训练数据集，采用 **Parquet** 格式。每个子集目录包含以下字段的 Parquet 文件：
+
+| 字段 | 类型 | 描述 |
+|:-----|:-----|:-----|
+| `qry` | string | 查询文本（可能包含 `<\|image_1\|>` 占位符） |
+| `qry_image_path` | string \| null | 查询图片相对路径 |
+| `pos_text` | string | 正例文本 |
+| `pos_image_path` | string \| null | 正例图片相对路径 |
+| `neg_text` | string \| null | 负例文本 |
+| `neg_image_path` | string \| null | 负例图片相对路径 |
+| `instruction` | string | 任务指令 |
+
+##### 数据准备
+
+1. 从 HuggingFace 下载数据集：
+   ```bash
+   # 下载 MMEB-train（包含 Parquet 文件和图片 zip 压缩包）
+   huggingface-cli download TIGER-Lab/MMEB-train --repo-type dataset --local-dir /path/to/MMEB-train
+   ```
+
+2. 解压图片：
+   ```bash
+   cd /path/to/MMEB-train
+   python unzip_file.py  # 将 images_zip/*.zip 解压到 images/
+   ```
+
+##### 使用 `image_root_dir` 参数
+
+由于 Parquet 文件中存储的是**相对**图片路径（如 `images/A-OKVQA/Train/xxx.jpg`），需通过 `--image_root_dir` 参数指定根目录来解析这些路径：
+
+```bash
+torchrun --nproc_per_node 4 \
+    -m FlagEmbedding.finetune.embedder.multimodal.base \
+    --model_name_or_path BAAI/BGE-VL-MLLM-S1 \
+    --train_data /path/to/MMEB-train/A-OKVQA /path/to/MMEB-train/CIRR ... \
+    --image_root_dir /path/to/MMEB-train/images \
+    --use_lora True \
+    --lora_rank 32 \
+    --lora_alpha 64 \
+    --output_dir ./output \
+    --bf16 \
+    --num_train_epochs 3 \
+    --deepspeed ds_stage1.json
+```
+
+每个 `--train_data` 条目是包含 Parquet 文件的**目录**。管线会自动检测 `.parquet` 文件并使用正确的字段映射加载。
+
+##### 训练脚本
+
+| 模型 | 类型 | 脚本 |
+|:-----|:-----|:-----|
+| BGE-VL (BAAI/BGE-VL-MLLM-S1) | 向量模型 | [`examples/finetune/embedder/multimodal/bge_vl_mmeb_train.sh`](examples/finetune/embedder/multimodal/bge_vl_mmeb_train.sh) |
+| jina-embeddings-v4 | 向量模型 | [`examples/finetune/embedder/multimodal/jina_v4_mmeb_train.sh`](examples/finetune/embedder/multimodal/jina_v4_mmeb_train.sh) |
+| Qwen3-VL-Embedding-2B | 向量模型 | [`examples/finetune/embedder/multimodal/qwen3_vl_emb_mmeb_train.sh`](examples/finetune/embedder/multimodal/qwen3_vl_emb_mmeb_train.sh) |
+| jina-reranker-m0 | 重排模型 | [`examples/finetune/reranker/multimodal/jina_m0_mmeb_train.sh`](examples/finetune/reranker/multimodal/jina_m0_mmeb_train.sh) |
+| Qwen3-VL-Reranker-2B | 重排模型 | [`examples/finetune/reranker/multimodal/qwen3_vl_rer_mmeb_train.sh`](examples/finetune/reranker/multimodal/qwen3_vl_rer_mmeb_train.sh) |
+
+---
 
 ### 兼容性
 

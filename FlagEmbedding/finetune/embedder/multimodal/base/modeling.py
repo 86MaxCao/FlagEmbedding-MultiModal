@@ -63,11 +63,16 @@ class BiMultimodalEmbedderModel(AbsEmbedderModel):
         except TypeError:
             outputs = self.model(**features)
 
-        if isinstance(outputs, torch.Tensor):
-            if outputs.ndim == 2:
-                embeddings = outputs
+        if not isinstance(outputs, torch.Tensor):
+            if hasattr(outputs, 'last_hidden_state') and outputs.last_hidden_state is not None:
+                outputs = outputs.last_hidden_state
+            elif hasattr(outputs, 'hidden_states') and outputs.hidden_states:
+                outputs = outputs.hidden_states[-1]
             else:
-                embeddings = outputs[:, -1, :]
+                outputs = outputs[0]
+
+        if outputs.ndim == 2:
+            embeddings = outputs
         else:
             embeddings = outputs[:, -1, :]
         

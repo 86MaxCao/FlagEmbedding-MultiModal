@@ -26,8 +26,12 @@ class MultimodalRerankerModelArguments(AbsRerankerModelArguments):
         metadata={"help": "The dropout rate of lora modules."}
     )
     loss_type: str = field(
-        default="pairwise",
-        metadata={"help": "Loss type: 'pairwise' or 'listwise'. Defaults to 'pairwise'."}
+        default="pointwise",
+        metadata={"help": "Loss type: 'pointwise' (BCEWithLogitsLoss, recommended), 'pairwise' (MarginRankingLoss), or 'listwise' (CrossEntropyLoss). Defaults to 'pointwise'."}
+    )
+    pairwise_margin: float = field(
+        default=1.0,
+        metadata={"help": "Margin for MarginRankingLoss in pairwise mode. Pre-trained rerankers need margin > 0 to produce non-zero loss."}
     )
     save_merged_lora_model: bool = field(
         default=False,

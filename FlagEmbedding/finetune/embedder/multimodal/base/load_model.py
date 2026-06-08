@@ -108,6 +108,74 @@ def _add_gme_data_process(model):
     model.data_process = types.MethodType(data_process, model)
 
 
+def _add_bgevl_data_process(model):
+    """Monkey-patch ``data_process`` on BGE-VL to handle None images in lists."""
+    import types
+    from PIL import Image
+
+    _orig_data_process = model.data_process
+
+    def data_process(self, images=None, text=None, q_or_c=None, task_instruction=None):
+        if isinstance(images, list):
+            if text is None:
+                text = [None] * len(images)
+            text_input = [
+                self.prepare_text_input(_image, _text, q_or_c, task_instruction)
+                for _image, _text in zip(images, text)
+            ]
+            valid_images = [img for img in images if img is not None]
+            if valid_images:
+                valid_images = [Image.open(img).resize((512, 512)).convert("RGB") for img in valid_images]
+                inputs = self.processor(images=valid_images, text=text_input, return_tensors="pt", padding=True)
+            else:
+                inputs = self.processor(text=text_input, return_tensors="pt", padding=True)
+            return {k: v.cpu() if hasattr(v, 'cpu') else v for k, v in inputs.items()}
+        if images is not None and not isinstance(images, list):
+            text_input = self.prepare_text_input(images, text, q_or_c, task_instruction)
+            text_input = [text_input]
+            if images is not None:
+                img = Image.open(images).resize((512, 512)).convert("RGB")
+                inputs = self.processor(images=[img], text=text_input, return_tensors="pt", padding=True)
+            else:
+                inputs = self.processor(text=text_input, return_tensors="pt", padding=True)
+            return {k: v.cpu() if hasattr(v, 'cpu') else v for k, v in inputs.items()}
+        return _orig_data_process(images=images, text=text, q_or_c=q_or_c, task_instruction=task_instruction)
+
+    model.data_process = types.MethodType(data_process, model)
+
+
+def _patch_bgevl_forward_compat(model):
+    """Patch BGE-VL for transformers 5.x where vision_tower, multi_modal_projector,
+    image_newline, and language_model moved from LlavaNextForConditionalGeneration
+    into LlavaNextModel (self.model). The cached BGE-VL code references these on
+    self directly, so we override __getattr__ to forward those lookups."""
+    cls = type(model)
+    _FORWARDED = frozenset({
+        'vision_tower', 'multi_modal_projector', 'image_newline', 'language_model',
+    })
+    _orig_getattr = cls.__getattr__
+
+    def _patched_getattr(self, name):
+        if name in _FORWARDED:
+            inner = self.__dict__.get('_modules', {}).get('model', None)
+            if inner is not None and hasattr(inner, name):
+                return getattr(inner, name)
+        return _orig_getattr(self, name)
+
+    cls.__getattr__ = _patched_getattr
+
+    _orig_pack = cls.pack_image_features
+
+    def _patched_pack(self, *args, **kwargs):
+        result, feature_lens = _orig_pack(self, *args, **kwargs)
+        if isinstance(result, list):
+            result = torch.cat(result, dim=0)
+        return result, feature_lens
+
+    cls.pack_image_features = _patched_pack
+    logger.info("Patched BGE-VL __getattr__ + pack_image_features for transformers 5.x compat.")
+
+
 def _patch_jina_forward_for_training(model):
     """Replace JinaEmbeddingsV4Model.forward() for training compatibility.
 
@@ -313,6 +381,16 @@ def get_model(model_args: MultimodalEmbedderModelArguments, output_dir: str, res
     elif hasattr(model, 'set_processor'):
         logger.info(f"Initializing processor for multimodal model: {model_args.model_name_or_path}")
         model.set_processor(model_args.model_name_or_path)
+        if hasattr(model, 'config') and hasattr(getattr(model.config, 'vision_config', None) or object(), 'patch_size'):
+            if hasattr(model, 'processor') and getattr(model.processor, 'patch_size', None) is None:
+                model.processor.patch_size = model.config.vision_config.patch_size
+                model.processor.vision_feature_select_strategy = getattr(
+                    model.config, 'vision_feature_select_strategy', 'default'
+                )
+                logger.info(f"Set processor.patch_size={model.processor.patch_size} from vision_config")
+        _patch_bgevl_forward_compat(model)
+        _add_bgevl_data_process(model)
+        logger.info("Applied BGE-VL data_process monkey-patch for None image handling.")
     else:
         logger.debug("Model does not have set_processor method.")
 

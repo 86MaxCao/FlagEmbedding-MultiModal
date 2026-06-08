@@ -70,6 +70,8 @@ class MultimodalRerankerTrainDataset(Dataset):
         args (AbsRerankerDataArguments): Data arguments.
         tokenizer (PreTrainedTokenizer): Tokenizer to use.
     """
+    SUPPORTED_EXTENSIONS = ('.json', '.jsonl', '.parquet')
+
     def __init__(
         self,
         args: AbsRerankerDataArguments,
@@ -77,19 +79,20 @@ class MultimodalRerankerTrainDataset(Dataset):
     ):
         self.args = args
         self.tokenizer = tokenizer
+        self.image_root_dir = getattr(args, 'image_root_dir', None)
 
         train_datasets = []
         for data_dir in args.train_data:
             if not os.path.isdir(data_dir):
-                if not (data_dir.endswith('.json') or data_dir.endswith('.jsonl')):
+                if not data_dir.endswith(self.SUPPORTED_EXTENSIONS):
                     continue
                 temp_dataset = self._load_dataset(data_dir)
                 if len(temp_dataset) == 0:
                     continue
                 train_datasets.append(temp_dataset)
             else:
-                for file in os.listdir(data_dir):
-                    if not (file.endswith('.json') or file.endswith('.jsonl')):
+                for file in sorted(os.listdir(data_dir)):
+                    if not file.endswith(self.SUPPORTED_EXTENSIONS):
                         continue
                     temp_dataset = self._load_dataset(os.path.join(data_dir, file))
                     if len(temp_dataset) == 0:
@@ -99,13 +102,22 @@ class MultimodalRerankerTrainDataset(Dataset):
 
     def _load_dataset(self, file_path: str):
         """Load dataset from path."""
-        safe_rank = dist.get_rank() if dist.is_initialized() else 0
+        is_distributed = dist.is_initialized()
+        safe_rank = dist.get_rank() if is_distributed else 0
         if safe_rank == 0:
             logger.info(f'loading data from {file_path} ...')
 
+        fmt = 'parquet' if file_path.endswith('.parquet') else 'json'
+
+        if is_distributed and safe_rank != 0:
+            dist.barrier()
+
         temp_dataset = datasets.load_dataset(
-            'json', data_files=file_path, split='train', cache_dir=self.args.cache_path
+            fmt, data_files=file_path, split='train', cache_dir=self.args.cache_path
         )
+
+        if is_distributed and safe_rank == 0:
+            dist.barrier()
         if len(temp_dataset) > self.args.max_example_num_per_dataset:
             temp_dataset = temp_dataset.select(
                 random.sample(list(range(len(temp_dataset))), self.args.max_example_num_per_dataset)
@@ -148,6 +160,25 @@ class MultimodalRerankerTrainDataset(Dataset):
             pos_images = data.get('pos_images', data.get('pos_image_path', []))
             neg_texts = data.get('neg', data.get('neg_text', []))
             neg_images = data.get('neg_images', data.get('neg_image_path', []))
+
+        # Resolve relative image paths using image_root_dir
+        if self.image_root_dir:
+            if query_image and isinstance(query_image, str) and not os.path.isabs(query_image):
+                query_image = os.path.join(self.image_root_dir, query_image)
+            if isinstance(pos_images, list):
+                pos_images = [
+                    os.path.join(self.image_root_dir, p) if p and isinstance(p, str) and not os.path.isabs(p) else p
+                    for p in pos_images
+                ]
+            elif pos_images and isinstance(pos_images, str) and not os.path.isabs(pos_images):
+                pos_images = os.path.join(self.image_root_dir, pos_images)
+            if isinstance(neg_images, list):
+                neg_images = [
+                    os.path.join(self.image_root_dir, n) if n and isinstance(n, str) and not os.path.isabs(n) else n
+                    for n in neg_images
+                ]
+            elif neg_images and isinstance(neg_images, str) and not os.path.isabs(neg_images):
+                neg_images = os.path.join(self.image_root_dir, neg_images)
 
         # Ensure lists
         if not isinstance(pos_texts, list):

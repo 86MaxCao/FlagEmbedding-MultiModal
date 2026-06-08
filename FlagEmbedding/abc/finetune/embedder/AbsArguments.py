@@ -104,6 +104,11 @@ class AbsEmbedderDataArguments:
         default=0.0, metadata={"help": "The ratio of shuffling the text"}
     )
 
+    image_root_dir: Optional[str] = field(
+        default=None,
+        metadata={"help": "Root directory for resolving relative image paths (e.g., for MMEB-train Parquet data)."}
+    )
+
     # Parameters for SameDatasetDataArguments
     same_dataset_within_batch: bool = field(
         default=False, metadata={"help": "All samples in the same batch comes from the same dataset."}

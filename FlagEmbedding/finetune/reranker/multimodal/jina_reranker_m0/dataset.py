@@ -19,11 +19,13 @@ logger = logging.getLogger(__name__)
 
 
 class JinaRerankerM0TrainDataset(Dataset):
-    """Training dataset for jina-reranker-m0 that uses plain JSON loading.
+    """Training dataset for jina-reranker-m0 that uses plain JSON/Parquet loading.
 
     Avoids the `datasets` library (pyarrow) which causes C++ heap corruption
     with the tokenizers library when both are loaded in the same process.
     """
+    SUPPORTED_EXTENSIONS = ('.json', '.jsonl', '.parquet')
+
     def __init__(
         self,
         args: AbsRerankerDataArguments,
@@ -32,20 +34,28 @@ class JinaRerankerM0TrainDataset(Dataset):
         self.args = args
         self.tokenizer = tokenizer
         self.shuffle_ratio = args.shuffle_ratio
+        self.image_root_dir = getattr(args, 'image_root_dir', None)
 
         self.data = []
         for data_dir in args.train_data:
             if not os.path.isdir(data_dir):
-                if not (data_dir.endswith('.json') or data_dir.endswith('.jsonl')):
+                if not data_dir.endswith(self.SUPPORTED_EXTENSIONS):
                     continue
-                self._load_json(data_dir)
+                self._load_file(data_dir)
             else:
-                for file in os.listdir(data_dir):
-                    if not (file.endswith('.json') or file.endswith('.jsonl')):
+                for file in sorted(os.listdir(data_dir)):
+                    if not file.endswith(self.SUPPORTED_EXTENSIONS):
                         continue
-                    self._load_json(os.path.join(data_dir, file))
+                    self._load_file(os.path.join(data_dir, file))
 
         logger.info(f'Loaded {len(self.data)} training samples')
+
+    def _load_file(self, file_path):
+        """Route to the appropriate loader based on file extension."""
+        if file_path.endswith('.parquet'):
+            self._load_parquet(file_path)
+        else:
+            self._load_json(file_path)
 
     def _load_json(self, file_path):
         safe_rank = 0
@@ -66,6 +76,24 @@ class JinaRerankerM0TrainDataset(Dataset):
                     continue
                 item = json.loads(line)
                 self.data.append(item)
+
+    def _load_parquet(self, file_path):
+        """Load data from a Parquet file using pandas (avoids pyarrow/tokenizers conflict)."""
+        safe_rank = 0
+        try:
+            import torch.distributed as dist
+            if dist.is_initialized():
+                safe_rank = dist.get_rank()
+        except Exception:
+            pass
+
+        if safe_rank == 0:
+            logger.info(f'Loading data from {file_path} ...')
+
+        import pandas as pd
+        df = pd.read_parquet(file_path)
+        records = df.to_dict('records')
+        self.data.extend(records)
 
     def _shuffle_text(self, text):
         if text is None:
@@ -102,6 +130,25 @@ class JinaRerankerM0TrainDataset(Dataset):
             pos_images = data.get('pos_images', data.get('pos_image_path', []))
             neg_texts = data.get('neg', data.get('neg_text', []))
             neg_images = data.get('neg_images', data.get('neg_image_path', []))
+
+        # Resolve relative image paths using image_root_dir
+        if self.image_root_dir:
+            if query_image and isinstance(query_image, str) and not os.path.isabs(query_image):
+                query_image = os.path.join(self.image_root_dir, query_image)
+            if isinstance(pos_images, list):
+                pos_images = [
+                    os.path.join(self.image_root_dir, p) if p and isinstance(p, str) and not os.path.isabs(p) else p
+                    for p in pos_images
+                ]
+            elif pos_images and isinstance(pos_images, str) and not os.path.isabs(pos_images):
+                pos_images = os.path.join(self.image_root_dir, pos_images)
+            if isinstance(neg_images, list):
+                neg_images = [
+                    os.path.join(self.image_root_dir, n) if n and isinstance(n, str) and not os.path.isabs(n) else n
+                    for n in neg_images
+                ]
+            elif neg_images and isinstance(neg_images, str) and not os.path.isabs(neg_images):
+                neg_images = os.path.join(self.image_root_dir, neg_images)
 
         if self.args.query_instruction_for_rerank is not None and query_text:
             query_text = self.args.query_instruction_format.format(
@@ -149,6 +196,10 @@ class JinaRerankerM0TrainDataset(Dataset):
                 passages_image.append(neg_images[neg_idx])
         else:
             neg_idxs = []
+            # No negatives available — duplicate the positive to fill train_group_size
+            for _ in range(train_group_size - 1):
+                passages_text.append(passages_text[0] if passages_text else None)
+                passages_image.append(passages_image[0] if passages_image else None)
 
         # Knowledge distillation scores
         if self.args.knowledge_distillation:
@@ -220,10 +271,10 @@ class JinaRerankerM0Collator:
 
         # Create pairs using formatting_prompts_func
         pairs = []
+        offset = 0
         for i, (q_text, q_image) in enumerate(zip(query_texts, query_images)):
-            group_size = len(features[0]['passages_text'])
-            start_idx = i * group_size
-            for j in range(start_idx, start_idx + group_size):
+            group_size = len(features[i]['passages_text'])
+            for j in range(offset, offset + group_size):
                 p_text = passages_texts[j]
                 p_image = passages_images[j]
 
@@ -240,19 +291,21 @@ class JinaRerankerM0Collator:
 
                 prompt = formatting_prompts_func(q_content, d_content, query_type=q_type, doc_type=d_type)
                 pairs.append(prompt)
+            offset += group_size
 
         if has_any_image and self.processor is not None:
             # Use processor for multimodal data
             loaded_images = []
+            offset = 0
             for i, (q_text, q_image) in enumerate(zip(query_texts, query_images)):
-                group_size = len(features[0]['passages_text'])
-                start_idx = i * group_size
-                for j in range(start_idx, start_idx + group_size):
+                group_size = len(features[i]['passages_text'])
+                for j in range(offset, offset + group_size):
                     p_image = passages_images[j]
                     imgs = []
                     if p_image: imgs.append(p_image)
                     if q_image: imgs.append(q_image)
                     loaded_images.append(imgs if imgs else None)
+                offset += group_size
 
             valid_images = []
             for img_list in loaded_images:

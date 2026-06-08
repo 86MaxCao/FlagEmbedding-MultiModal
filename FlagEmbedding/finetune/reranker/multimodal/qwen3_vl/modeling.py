@@ -26,16 +26,15 @@ class Qwen3VLRerankerModel(AbsRerankerModel):
         self,
         base_model,
         tokenizer=None,
-        train_batch_size: int = 4,
+        train_group_size: int = 2,
         loss_type: str = 'pairwise',
+        pairwise_margin: float = 1.0,
     ):
-        # Bypass AbsRerankerModel.__init__ which requires config.pad_token_id
-        # and tokenizer('Yes', ...) that may not work with all configs
         nn.Module.__init__(self)
         self.model = base_model
         self.tokenizer = tokenizer
         self.cross_entropy = nn.CrossEntropyLoss(reduction='mean')
-        self.train_batch_size = train_batch_size
+        self.train_group_size = train_group_size
 
         # Get config - handle PeftModel wrapping
         model_for_config = self.model
@@ -44,13 +43,14 @@ class Qwen3VLRerankerModel(AbsRerankerModel):
         self.config = getattr(model_for_config, 'config', None)
 
         self.loss_type = loss_type
+        self.pointwise_loss = nn.BCEWithLogitsLoss(reduction='mean')
         self.listwise_loss = nn.CrossEntropyLoss(reduction='mean')
-        self.pairwise_loss = nn.MarginRankingLoss(margin=0.0, reduction='mean')
+        self.pairwise_loss = nn.MarginRankingLoss(margin=pairwise_margin, reduction='mean')
 
         # Build binary score linear from lm_head weights (yes - no)
         self._init_score_linear(model_for_config)
 
-        logger.info(f"Using {loss_type} loss for Qwen3-VL-Reranker training")
+        logger.info(f"Using {loss_type} loss (pairwise_margin={pairwise_margin}) for Qwen3-VL-Reranker training")
 
     def _init_score_linear(self, model_for_config):
         """Initialize score linear from lm_head weights: weight = W[yes] - W[no].
@@ -80,9 +80,7 @@ class Qwen3VLRerankerModel(AbsRerankerModel):
                 self.score_linear = nn.Linear(D, 1, bias=False)
                 with torch.no_grad():
                     self.score_linear.weight[0] = weight_yes - weight_no
-                # Match dtype of the model weights
                 self.score_linear = self.score_linear.to(weight_yes.dtype)
-                self.score_linear.eval()
                 logger.info(f"Initialized score linear from lm_head (yes_id={yes_id}, no_id={no_id}, dim={D}, dtype={weight_yes.dtype})")
             else:
                 logger.warning("Could not find lm_head; score_linear will not be initialized")
@@ -147,18 +145,20 @@ class Qwen3VLRerankerModel(AbsRerankerModel):
 
         if teacher_scores is not None:
             teacher_scores = torch.Tensor(teacher_scores).to(ranker_logits.device)
-            teacher_scores = teacher_scores.view(self.train_batch_size, -1)
+            teacher_scores = teacher_scores.view(-1, self.train_group_size)
             teacher_targets = torch.softmax(teacher_scores.detach(), dim=-1)
         else:
             teacher_targets = None
 
         if self.training:
-            if self.loss_type == 'listwise':
+            if self.loss_type == 'pointwise':
+                loss = self.compute_pointwise_loss(ranker_logits)
+            elif self.loss_type == 'listwise':
                 loss = self.compute_listwise_loss(ranker_logits, teacher_scores, teacher_targets)
             elif self.loss_type == 'pairwise':
                 loss = self.compute_pairwise_loss(ranker_logits, teacher_scores, teacher_targets)
             else:
-                raise ValueError(f"Unknown loss_type: {self.loss_type}. Must be 'pairwise' or 'listwise'.")
+                raise ValueError(f"Unknown loss_type: {self.loss_type}. Must be 'pointwise', 'pairwise', or 'listwise'.")
         else:
             loss = None
 
@@ -167,10 +167,21 @@ class Qwen3VLRerankerModel(AbsRerankerModel):
             scores=ranker_logits,
         )
 
+    def compute_pointwise_loss(self, scores):
+        """Compute pointwise BCE loss (matching ms-swift's PointwiseRerankerLoss).
+
+        Each group has 1 positive (label=1) followed by (train_group_size-1) negatives (label=0).
+        """
+        grouped_logits = scores.view(-1, self.train_group_size)
+        labels = torch.zeros_like(grouped_logits)
+        labels[:, 0] = 1.0
+        return self.pointwise_loss(grouped_logits.view(-1), labels.view(-1))
+
     def compute_listwise_loss(self, scores, teacher_scores=None, teacher_targets=None):
         """Compute listwise loss."""
-        grouped_logits = scores.view(self.train_batch_size, -1)
-        target = torch.zeros(self.train_batch_size, device=grouped_logits.device, dtype=torch.long)
+        grouped_logits = scores.view(-1, self.train_group_size)
+        batch_size = grouped_logits.size(0)
+        target = torch.zeros(batch_size, device=grouped_logits.device, dtype=torch.long)
         loss = self.listwise_loss(grouped_logits, target)
 
         if teacher_scores is not None and teacher_targets is not None:
@@ -184,7 +195,7 @@ class Qwen3VLRerankerModel(AbsRerankerModel):
 
     def compute_pairwise_loss(self, scores, teacher_scores=None, teacher_targets=None):
         """Compute pairwise loss."""
-        grouped_logits = scores.view(self.train_batch_size, -1)
+        grouped_logits = scores.view(-1, self.train_group_size)
         pos_scores = grouped_logits[:, 0]
         neg_scores = grouped_logits[:, 1:]
 

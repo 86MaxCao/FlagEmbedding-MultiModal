@@ -25,16 +25,15 @@ class JinaRerankerM0Model(AbsRerankerModel):
         self,
         base_model,
         tokenizer=None,
-        train_batch_size: int = 4,
+        train_group_size: int = 2,
         loss_type: str = 'pairwise',
+        pairwise_margin: float = 1.0,
     ):
-        # Bypass AbsRerankerModel.__init__ which accesses config.pad_token_id
-        # and tokenizer('Yes', ...) that don't work with Qwen2VLConfig
         nn.Module.__init__(self)
         self.model = base_model
         self.tokenizer = tokenizer
         self.cross_entropy = nn.CrossEntropyLoss(reduction='mean')
-        self.train_batch_size = train_batch_size
+        self.train_group_size = train_group_size
 
         # Get config - handle PeftModel wrapping
         model_for_config = self.model
@@ -53,10 +52,11 @@ class JinaRerankerM0Model(AbsRerankerModel):
                     self.config.pad_token_id = tokenizer.pad_token_id
 
         self.loss_type = loss_type
+        self.pointwise_loss = nn.BCEWithLogitsLoss(reduction='mean')
         self.listwise_loss = nn.CrossEntropyLoss(reduction='mean')
-        self.pairwise_loss = nn.MarginRankingLoss(margin=0.0, reduction='mean')
+        self.pairwise_loss = nn.MarginRankingLoss(margin=pairwise_margin, reduction='mean')
 
-        logger.info(f"Using {loss_type} loss for jina-reranker-m0 training")
+        logger.info(f"Using {loss_type} loss (pairwise_margin={pairwise_margin}) for jina-reranker-m0 training")
 
     def encode(self, features):
         """Forward through jina-reranker-m0 to get scores.
@@ -90,18 +90,20 @@ class JinaRerankerM0Model(AbsRerankerModel):
 
         if teacher_scores is not None:
             teacher_scores = torch.Tensor(teacher_scores)
-            teacher_targets = teacher_scores.view(self.train_batch_size, -1)
-            teacher_targets = torch.softmax(teacher_scores.detach(), dim=-1)
+            teacher_targets = teacher_scores.view(-1, self.train_group_size)
+            teacher_targets = torch.softmax(teacher_targets.detach(), dim=-1)
         else:
             teacher_targets = None
 
         if self.training:
-            if self.loss_type == 'listwise':
+            if self.loss_type == 'pointwise':
+                loss = self.compute_pointwise_loss(ranker_logits)
+            elif self.loss_type == 'listwise':
                 loss = self.compute_listwise_loss(ranker_logits, teacher_scores, teacher_targets)
             elif self.loss_type == 'pairwise':
                 loss = self.compute_pairwise_loss(ranker_logits, teacher_scores, teacher_targets)
             else:
-                raise ValueError(f"Unknown loss_type: {self.loss_type}. Must be 'pairwise' or 'listwise'.")
+                raise ValueError(f"Unknown loss_type: {self.loss_type}. Must be 'pointwise', 'pairwise', or 'listwise'.")
         else:
             loss = None
 
@@ -110,10 +112,21 @@ class JinaRerankerM0Model(AbsRerankerModel):
             scores=ranker_logits,
         )
 
+    def compute_pointwise_loss(self, scores):
+        """Compute pointwise BCE loss (matching ms-swift's PointwiseRerankerLoss).
+
+        Each group has 1 positive (label=1) followed by (train_group_size-1) negatives (label=0).
+        """
+        grouped_logits = scores.view(-1, self.train_group_size)
+        labels = torch.zeros_like(grouped_logits)
+        labels[:, 0] = 1.0
+        return self.pointwise_loss(grouped_logits.view(-1), labels.view(-1))
+
     def compute_listwise_loss(self, scores, teacher_scores=None, teacher_targets=None):
         """Compute listwise loss."""
-        grouped_logits = scores.view(self.train_batch_size, -1)
-        target = torch.zeros(self.train_batch_size, device=grouped_logits.device, dtype=torch.long)
+        grouped_logits = scores.view(-1, self.train_group_size)
+        batch_size = grouped_logits.size(0)
+        target = torch.zeros(batch_size, device=grouped_logits.device, dtype=torch.long)
         loss = self.listwise_loss(grouped_logits, target)
 
         if teacher_scores is not None and teacher_targets is not None:
@@ -127,7 +140,7 @@ class JinaRerankerM0Model(AbsRerankerModel):
 
     def compute_pairwise_loss(self, scores, teacher_scores=None, teacher_targets=None):
         """Compute pairwise loss."""
-        grouped_logits = scores.view(self.train_batch_size, -1)
+        grouped_logits = scores.view(-1, self.train_group_size)
         pos_scores = grouped_logits[:, 0]
         neg_scores = grouped_logits[:, 1:]
 

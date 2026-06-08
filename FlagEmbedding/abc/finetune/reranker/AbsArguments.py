@@ -119,6 +119,11 @@ class AbsRerankerDataArguments:
         default=0.0, metadata={"help": "The ratio of shuffling the text"}
     )
 
+    image_root_dir: Optional[str] = field(
+        default=None,
+        metadata={"help": "Root directory for resolving relative image paths (e.g., for MMEB-train Parquet data)."}
+    )
+
     sep_token: str = field(
         default='\n', metadata={"help": "The sep token for LLM reranker to discriminate between query and passage"}
     )

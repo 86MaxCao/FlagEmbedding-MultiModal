@@ -70,8 +70,9 @@ class Qwen3VLRerankerRunner(AbsRerankerRunner):
         model = Qwen3VLRerankerModel(
             base_model,
             tokenizer=tokenizer,
-            train_batch_size=self.training_args.per_device_train_batch_size,
+            train_group_size=self.data_args.train_group_size,
             loss_type=self.model_args.loss_type,
+            pairwise_margin=self.model_args.pairwise_margin,
         )
 
         if self.training_args.gradient_checkpointing:

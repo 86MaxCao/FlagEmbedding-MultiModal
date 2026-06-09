@@ -2,7 +2,7 @@ export WANDB_MODE=disabled
 
 # MMEB-train data directories (each contains train/diverse_instruction/original parquet files)
 MMEB_ROOT="/mnt/nas-tbt/tbt/data/hf_cache/MMEB-train"
-IMAGE_ROOT="${MMEB_ROOT}/images"
+IMAGE_ROOT="${MMEB_ROOT}"
 
 train_data="\
     ${MMEB_ROOT}/A-OKVQA \

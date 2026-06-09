@@ -2,7 +2,7 @@ export WANDB_MODE=disabled
 
 # MMEB-train data directories (each contains train/diverse_instruction/original parquet files)
 MMEB_ROOT="/mnt/nas-tbt/tbt/data/hf_cache/MMEB-train"
-IMAGE_ROOT="${MMEB_ROOT}/images"
+IMAGE_ROOT="${MMEB_ROOT}"
 
 train_data="\
     ${MMEB_ROOT}/A-OKVQA \
@@ -46,7 +46,7 @@ model_args="\
     --lora_rank 32 \
     --lora_alpha 64 \
     --lora_dropout 0.1 \
-    --loss_type pairwise \
+    --loss_type pointwise \
     --save_merged_lora_model True \
 "
 

@@ -273,12 +273,12 @@ torchrun --nproc_per_node 4 \
 
 ```bash
 torchrun --nproc_per_node 2 \
-    -m FlagEmbedding.finetune.reranker.multimodal.base \
+    -m FlagEmbedding.finetune.reranker.multimodal.jina_reranker_m0 \
     --model_name_or_path jinaai/jina-reranker-m0 \
     --use_lora True \
     --lora_rank 32 \
     --lora_alpha 64 \
-    --loss_type pairwise \
+    --loss_type pointwise \
     --save_merged_lora_model True \
     --trust_remote_code True \
     --train_data path/to/train_with_scores.jsonl \
@@ -357,7 +357,7 @@ torchrun --nproc_per_node 4 \
     -m FlagEmbedding.finetune.embedder.multimodal.base \
     --model_name_or_path BAAI/BGE-VL-MLLM-S1 \
     --train_data /path/to/MMEB-train/A-OKVQA /path/to/MMEB-train/CIRR ... \
-    --image_root_dir /path/to/MMEB-train/images \
+    --image_root_dir /path/to/MMEB-train \
     --use_lora True \
     --lora_rank 32 \
     --lora_alpha 64 \
